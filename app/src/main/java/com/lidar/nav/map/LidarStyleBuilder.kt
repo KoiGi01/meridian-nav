@@ -8,6 +8,7 @@ import com.mapbox.maps.extension.style.layers.generated.backgroundLayer
 import com.mapbox.maps.extension.style.layers.generated.fillExtrusionLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
 import com.mapbox.maps.extension.style.layers.generated.symbolLayer
+import com.mapbox.maps.extension.style.layers.properties.generated.SymbolPlacement
 import com.mapbox.maps.extension.style.sources.generated.rasterDemSource
 import com.mapbox.maps.extension.style.sources.generated.vectorSource
 import com.mapbox.maps.extension.style.style
@@ -140,7 +141,7 @@ object LidarStyleBuilder {
         +fillExtrusionLayer("buildings", "mapbox-streets") {
             sourceLayer("building")
             fillExtrusionColor(LIDAR_BLACK)
-            fillExtrusionOpacity(0.01)
+            fillExtrusionOpacity(0.0)
             fillExtrusionHeight(get("height"))
             fillExtrusionBase(get("min_height"))
         }
@@ -160,7 +161,7 @@ object LidarStyleBuilder {
             textColor(LIDAR_WHITE)
             textOpacity(0.4)
             textMaxAngle(30.0)
-            symbolPlacement("line")
+            symbolPlacement(SymbolPlacement.LINE)
         }
     }
 }

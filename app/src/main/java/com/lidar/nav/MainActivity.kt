@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
-import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.lidar.nav.databinding.ActivityMainBinding
 import com.lidar.nav.map.LidarStyleBuilder
