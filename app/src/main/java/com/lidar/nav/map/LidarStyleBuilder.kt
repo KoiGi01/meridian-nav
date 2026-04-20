@@ -1,9 +1,10 @@
 package com.lidar.nav.map
 
 import com.mapbox.maps.extension.style.expressions.dsl.generated.eq
-import com.mapbox.maps.extension.style.expressions.dsl.generated.match
 import com.mapbox.maps.extension.style.expressions.dsl.generated.get
 import com.mapbox.maps.extension.style.expressions.dsl.generated.literal
+import com.mapbox.maps.extension.style.expressions.dsl.generated.match
+import com.mapbox.maps.extension.style.expressions.dsl.generated.subtract
 import com.mapbox.maps.extension.style.layers.generated.backgroundLayer
 import com.mapbox.maps.extension.style.layers.generated.fillExtrusionLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
@@ -19,6 +20,8 @@ object LidarStyleBuilder {
     const val WINE_RED = "#6b0919"
     const val LIDAR_WHITE = "#FFFFFF"
     const val LIDAR_BLACK = "#000000"
+    const val ROOF_GRAY = "#3a3a3a"
+    const val ROOF_THICKNESS_M = 2.0
 
     const val ROUTE_SOURCE_ID = "lidar-route-source"
     const val ROUTE_LAYER_ID = "lidar-route-line"
@@ -137,15 +140,40 @@ object LidarStyleBuilder {
             lineWidth(1.5)
         }
 
-        // ── Buildings — LiDAR wireframe (edge lines, ghost faces) ────────────
-        +fillExtrusionLayer("buildings", "mapbox-streets") {
+        // ── Building body — solid matte black, chopped at (height - ROOF_THICKNESS_M) ──
+        +fillExtrusionLayer("buildings-body", "mapbox-streets") {
             sourceLayer("building")
-            fillExtrusionColor(LIDAR_WHITE)
-            fillExtrusionOpacity(0.05)
-            fillExtrusionHeight(get("height"))
+            fillExtrusionColor(LIDAR_BLACK)
+            fillExtrusionOpacity(1.0)
+            fillExtrusionVerticalGradient(false)
+            fillExtrusionHeight(
+                subtract {
+                    get("height")
+                    literal(ROOF_THICKNESS_M)
+                }
+            )
             fillExtrusionBase(get("min_height"))
-            fillExtrusionLineWidth(0.8)
-            fillExtrusionEmissiveStrength(1.0)
+            fillExtrusionLineWidth(0.6)
+            fillExtrusionEmissiveStrength(1.2)
+            fillExtrusionAmbientOcclusionIntensity(0.5)
+            fillExtrusionAmbientOcclusionRadius(3.0)
+        }
+
+        // ── Roof cap — lighter gray slab sitting on top of body ──────────────
+        +fillExtrusionLayer("buildings-roof", "mapbox-streets") {
+            sourceLayer("building")
+            fillExtrusionColor(ROOF_GRAY)
+            fillExtrusionOpacity(1.0)
+            fillExtrusionVerticalGradient(false)
+            fillExtrusionHeight(get("height"))
+            fillExtrusionBase(
+                subtract {
+                    get("height")
+                    literal(ROOF_THICKNESS_M)
+                }
+            )
+            fillExtrusionLineWidth(0.6)
+            fillExtrusionEmissiveStrength(1.4)
         }
 
         // ── Road labels ───────────────────────────────────────────────────────
