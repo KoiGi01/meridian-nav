@@ -1,5 +1,7 @@
 package com.lidar.nav
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
@@ -11,7 +13,10 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import com.lidar.nav.databinding.ActivityMainBinding
 import com.lidar.nav.map.LidarStyleBuilder
 import com.lidar.nav.map.MapCameraManager
@@ -50,6 +55,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var searchOverlay: SearchOverlay
     private lateinit var turnOverlay: TurnInstructionOverlay
     val appState = AppStateController()
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { grants ->
+        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        if (granted) enableLocationComponent()
+        else Toast.makeText(this, "Location permission required to navigate", Toast.LENGTH_LONG).show()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -105,7 +119,7 @@ class MainActivity : AppCompatActivity() {
                     ).apply { gravity = Gravity.BOTTOM }
                 )
             }
-            idleOverlay.setOnClickListener { searchOverlay.show() }
+            idleOverlay.searchButton.setOnClickListener { searchOverlay.show() }
             turnOverlay = TurnInstructionOverlay(this).apply {
                 onTurnExecuted = { cameraManager.recenterAfterTurn() }
             }.also {
@@ -147,17 +161,43 @@ class MainActivity : AppCompatActivity() {
             )
             navigationManager.addRouteLayersToStyle()
             searchOverlay.onResultSelected = { _ -> transitionToRouting() }
-            val crosshair = ImageHolder.from(createCrosshairBitmap())
-            binding.mapView.location.updateSettings {
-                enabled = true
-                pulsingEnabled = false
-                locationPuck = LocationPuck2D(
-                    topImage = crosshair,
-                    bearingImage = crosshair,
-                    shadowImage = null
-                )
-            }
+            ensureLocationPermission()
         }
+    }
+
+    private fun ensureLocationPermission() {
+        val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
+            enableLocationComponent()
+        } else {
+            locationPermissionLauncher.launch(arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ))
+        }
+    }
+
+    private fun enableLocationComponent() {
+        val crosshair = ImageHolder.from(createCrosshairBitmap())
+        binding.mapView.location.updateSettings {
+            enabled = true
+            pulsingEnabled = false
+            locationPuck = LocationPuck2D(
+                topImage = crosshair,
+                bearingImage = crosshair,
+                shadowImage = null
+            )
+        }
+        binding.mapView.location.addOnIndicatorPositionChangedListener(object :
+            com.mapbox.maps.plugin.locationcomponent.OnIndicatorPositionChangedListener {
+            override fun onIndicatorPositionChanged(point: Point) {
+                binding.mapView.mapboxMap.setCamera(
+                    CameraOptions.Builder().center(point).build()
+                )
+                binding.mapView.location.removeOnIndicatorPositionChangedListener(this)
+            }
+        })
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
