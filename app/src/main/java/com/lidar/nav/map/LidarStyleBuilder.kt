@@ -23,14 +23,14 @@ object LidarStyleBuilder {
     const val ROUTE_SOURCE_ID = "lidar-route-source"
     const val ROUTE_LAYER_ID = "lidar-route-line"
 
-    fun build() = style(styleUri = "mapbox://styles/mapbox/empty-v9") {
+    fun build() = style("mapbox://styles/mapbox/empty-v9") {
 
         // ── Sources ──────────────────────────────────────────────────────────
 
         +rasterDemSource("mapbox-dem") {
             url("mapbox://mapbox.mapbox-terrain-dem-v1")
             tileSize(512)
-            maxzoom(14.0)
+            maxzoom(14L)
         }
 
         +vectorSource("mapbox-terrain") {
@@ -47,7 +47,7 @@ object LidarStyleBuilder {
         }
 
         // ── Background ───────────────────────────────────────────────────────
-        +backgroundLayer("background") {
+        +backgroundLayer("lidar-background") {
             backgroundColor(LIDAR_BLACK)
         }
 
@@ -137,20 +137,15 @@ object LidarStyleBuilder {
             lineWidth(1.5)
         }
 
-        // ── Building wireframe outlines ───────────────────────────────────────
+        // ── Buildings — LiDAR wireframe (edge lines, ghost faces) ────────────
         +fillExtrusionLayer("buildings", "mapbox-streets") {
             sourceLayer("building")
-            fillExtrusionColor(LIDAR_BLACK)
-            fillExtrusionOpacity(0.0)
+            fillExtrusionColor(LIDAR_WHITE)
+            fillExtrusionOpacity(0.05)
             fillExtrusionHeight(get("height"))
             fillExtrusionBase(get("min_height"))
-        }
-
-        +lineLayer("building-outlines", "mapbox-streets") {
-            sourceLayer("building")
-            lineColor(LIDAR_WHITE)
-            lineOpacity(0.25)
-            lineWidth(0.5)
+            fillExtrusionLineWidth(0.8)
+            fillExtrusionEmissiveStrength(1.0)
         }
 
         // ── Road labels ───────────────────────────────────────────────────────

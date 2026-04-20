@@ -1,7 +1,7 @@
 package com.lidar.nav
 
 import android.app.Application
-import com.mapbox.maps.MapboxOptions
+import com.mapbox.common.MapboxOptions
 
 class LidarApp : Application() {
     override fun onCreate() {
