@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.LIDAR" parent="Theme.AppCompat.NoActionBar">
+        <item name="android:windowBackground">@color/lidar_black</item>
+        <item name="android:statusBarColor">@color/lidar_black</item>
+        <item name="android:navigationBarColor">@color/lidar_black</item>
+    </style>
+</resources>
