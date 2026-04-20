@@ -5,8 +5,12 @@ import android.os.Bundle
 import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
+import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.lidar.nav.databinding.ActivityMainBinding
+import com.lidar.nav.map.LidarStyleBuilder
+import com.lidar.nav.state.AppStateController
+import com.mapbox.maps.CameraOptions
 
 class MainActivity : AppCompatActivity() {
 
@@ -22,12 +26,22 @@ class MainActivity : AppCompatActivity() {
     }
 
     private lateinit var binding: ActivityMainBinding
+    val appState = AppStateController()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         enforceFullscreen()
+        binding.mapView.mapboxMap.loadStyle(LidarStyleBuilder.build()) {
+            // Style loaded — set initial camera pitch and zoom
+            binding.mapView.mapboxMap.setCamera(
+                CameraOptions.Builder()
+                    .pitch(45.0)
+                    .zoom(15.0)
+                    .build()
+            )
+        }
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
