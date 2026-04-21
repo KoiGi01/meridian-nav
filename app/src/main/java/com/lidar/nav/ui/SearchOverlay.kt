@@ -4,6 +4,8 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
+import android.os.Handler
+import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.AttributeSet
@@ -17,13 +19,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
 import com.lidar.nav.R
+import com.mapbox.geojson.Point
 
-data class SearchResult(val name: String, val address: String, val distanceKm: Float)
+data class SearchResult(val name: String, val address: String, val point: Point)
 
 class SearchOverlay @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : LinearLayout(context, attrs) {
 
+    var onQuery: ((String) -> Unit)? = null
     var onResultSelected: ((SearchResult) -> Unit)? = null
     var onDismissed: (() -> Unit)? = null
 
@@ -34,12 +38,15 @@ class SearchOverlay @JvmOverloads constructor(
 
     private val searchField: EditText
     private val resultsList: LinearLayout
+    private val debouncer = Handler(Looper.getMainLooper())
+    private var pendingQuery: Runnable? = null
 
     init {
         orientation = VERTICAL
         setBackgroundColor(Color.parseColor("#F0000000"))
         translationY = 2000f
         visibility = View.GONE
+        isMotionEventSplittingEnabled = false
 
         val searchContainer = FrameLayout(context).apply {
             val border = GradientDrawable().apply {
@@ -75,12 +82,14 @@ class SearchOverlay @JvmOverloads constructor(
     }
 
     private fun onQueryChanged(query: String) {
-        if (query.length >= 2) {
-            showResults(listOf(
-                SearchResult(query.uppercase(), "Search via Mapbox Search API", 0f)
-            ))
-        } else {
+        pendingQuery?.let { debouncer.removeCallbacks(it) }
+        val trimmed = query.trim()
+        if (trimmed.length < 2) {
             resultsList.removeAllViews()
+            return
+        }
+        pendingQuery = Runnable { onQuery?.invoke(trimmed) }.also {
+            debouncer.postDelayed(it, 250)
         }
     }
 
@@ -107,12 +116,14 @@ class SearchOverlay @JvmOverloads constructor(
                 textSize = 13f
                 typeface = monoTypeface
             })
-            row.addView(TextView(context).apply {
-                text = result.address
-                setTextColor(Color.parseColor("#80FFFFFF"))
-                textSize = 10f
-                typeface = monoTypeface
-            })
+            if (result.address.isNotEmpty()) {
+                row.addView(TextView(context).apply {
+                    text = result.address
+                    setTextColor(Color.parseColor("#80FFFFFF"))
+                    textSize = 10f
+                    typeface = monoTypeface
+                })
+            }
             resultsList.addView(row)
             resultsList.addView(View(context).apply {
                 setBackgroundColor(Color.parseColor("#1A6b0919"))

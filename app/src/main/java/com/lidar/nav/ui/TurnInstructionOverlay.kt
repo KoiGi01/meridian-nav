@@ -22,105 +22,95 @@ class TurnInstructionOverlay @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : FrameLayout(context, attrs) {
 
-    private val monoTypeface: Typeface? by lazy {
+    private val mono: Typeface? by lazy {
         try { ResourcesCompat.getFont(context, R.font.jetbrains_mono_regular) }
         catch (e: Exception) { Typeface.MONOSPACE }
     }
 
-    private val primaryCard: LinearLayout
-    private val turnArrowView: TurnArrowView
-    private val streetNameView: TextView
+    private val card: LinearLayout
+    private val turnArrow: TurnArrowView
     private val distanceView: TextView
-
-    private val secondaryCard: LinearLayout
-    private val secondaryText: TextView
+    private val streetView: TextView
+    private val headerView: TextView
 
     var onTurnExecuted: (() -> Unit)? = null
     private var currentDistanceM: Float = Float.MAX_VALUE
-    private var isVisible = false
+    private var isShown = false
     private var isPulsed = false
+
+    private val density = resources.displayMetrics.density
 
     init {
         visibility = View.GONE
-        translationY = -dipToPx(200).toFloat()
+        alpha = 0f
 
-        secondaryCard = LinearLayout(context).apply {
+        card = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#80000000"))
-            alpha = 0f
-            setPadding(dipToPx(12), dipToPx(8), dipToPx(12), dipToPx(8))
-        }
-        addView(secondaryCard, LayoutParams(LayoutParams.MATCH_PARENT, dipToPx(40)).apply {
-            topMargin = dipToPx(6)
-            gravity = Gravity.TOP
-        })
-
-        secondaryText = TextView(context).apply {
-            setTextColor(Color.parseColor("#66FFFFFF"))
-            textSize = 10f
-            typeface = monoTypeface
-        }
-        secondaryCard.addView(secondaryText)
-
-        primaryCard = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            setBackgroundColor(Color.parseColor("#E6000000"))
-            setPadding(dipToPx(16), dipToPx(12), dipToPx(16), dipToPx(12))
             gravity = Gravity.CENTER_VERTICAL
+            background = BracketDrawable(
+                legLengthPx = 12 * density,
+                strokeWidthPx = 1.2f * density,
+                strokeColor = Color.WHITE,
+                fillColor = Color.parseColor("#CC000000")
+            )
+            setPadding(
+                (18 * density).toInt(), (12 * density).toInt(),
+                (22 * density).toInt(), (12 * density).toInt()
+            )
         }
-        addView(primaryCard, LayoutParams(LayoutParams.MATCH_PARENT, dipToPx(80)))
+        addView(card, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT))
 
-        turnArrowView = TurnArrowView(context).also {
-            primaryCard.addView(it, LinearLayout.LayoutParams(dipToPx(48), dipToPx(48)).apply {
-                rightMargin = dipToPx(16)
-            })
+        turnArrow = TurnArrowView(context).also {
+            card.addView(it, LinearLayout.LayoutParams(
+                (40 * density).toInt(), (40 * density).toInt()
+            ).apply { rightMargin = (14 * density).toInt() })
         }
 
         val textBlock = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        primaryCard.addView(textBlock, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        card.addView(textBlock)
 
-        streetNameView = TextView(context).apply {
-            setTextColor(Color.WHITE)
-            textSize = 14f
-            typeface = monoTypeface
+        headerView = TextView(context).apply {
+            text = "\u25E2 NEXT"
+            setTextColor(Color.parseColor("#99FFFFFF"))
+            textSize = 9f
+            typeface = mono
+            letterSpacing = 0.25f
         }.also { textBlock.addView(it) }
 
         distanceView = TextView(context).apply {
-            setTextColor(Color.parseColor("#CC6b0919"))
-            textSize = 20f
-            typeface = monoTypeface
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            typeface = Typeface.create(mono, Typeface.BOLD)
+        }.also { textBlock.addView(it) }
+
+        streetView = TextView(context).apply {
+            setTextColor(Color.parseColor("#CCFFFFFF"))
+            textSize = 11f
+            typeface = mono
+            letterSpacing = 0.1f
         }.also { textBlock.addView(it) }
     }
 
-    fun show(streetName: String, maneuverType: String, distanceM: Float, secondaryInstruction: String = "") {
-        if (isVisible) return
-        isVisible = true
+    fun show(streetName: String, maneuverType: String, distanceM: Float) {
+        isShown = true
         isPulsed = false
         currentDistanceM = distanceM
 
-        streetNameView.text = streetName.uppercase()
+        streetView.text = streetName
         distanceView.text = formatDistance(distanceM)
-        turnArrowView.setManeuver(maneuverType)
-
-        if (secondaryInstruction.isNotBlank()) {
-            secondaryText.text = "THEN: ${secondaryInstruction.uppercase()}"
-            secondaryCard.alpha = 0.4f
-        }
+        turnArrow.setManeuver(maneuverType)
 
         visibility = View.VISIBLE
-        translationY = -dipToPx(200).toFloat()
+        translationY = -dipToPx(40).toFloat()
         animate()
-            .translationY(0f)
-            .setDuration(400)
-            .setInterpolator(DecelerateInterpolator())
-            .start()
+            .translationY(0f).alpha(1f)
+            .setDuration(400).setInterpolator(DecelerateInterpolator()).start()
     }
 
     fun updateDistance(distanceM: Float) {
-        if (!isVisible) return
+        if (!isShown) return
         currentDistanceM = distanceM
         distanceView.text = formatDistance(distanceM)
-
         if (distanceM <= 50f && !isPulsed) {
             isPulsed = true
             triggerWineRedPulse()
@@ -128,22 +118,22 @@ class TurnInstructionOverlay @JvmOverloads constructor(
     }
 
     private fun triggerWineRedPulse() {
-        val overlay = View(context).apply {
+        val flash = View(context).apply {
             setBackgroundColor(Color.parseColor("#6b0919"))
             alpha = 0f
         }
-        primaryCard.addView(overlay, LinearLayout.LayoutParams(
+        card.addView(flash, LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.MATCH_PARENT
         ))
         AnimatorSet().apply {
             playSequentially(
-                ObjectAnimator.ofFloat(overlay, "alpha", 0f, 0.6f).apply { duration = 200 },
-                ObjectAnimator.ofFloat(overlay, "alpha", 0.6f, 0f).apply { duration = 300 }
+                ObjectAnimator.ofFloat(flash, "alpha", 0f, 0.6f).apply { duration = 200 },
+                ObjectAnimator.ofFloat(flash, "alpha", 0.6f, 0f).apply { duration = 300 }
             )
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
-                    primaryCard.removeView(overlay)
+                    card.removeView(flash)
                     dismissWithWipe()
                 }
             })
@@ -152,14 +142,15 @@ class TurnInstructionOverlay @JvmOverloads constructor(
     }
 
     private fun dismissWithWipe() {
-        ObjectAnimator.ofFloat(this, "translationX", 0f, width.toFloat()).apply {
+        ObjectAnimator.ofFloat(this, "translationX", 0f, -width.toFloat()).apply {
             duration = 350
             interpolator = LinearInterpolator()
             addListener(object : AnimatorListenerAdapter() {
                 override fun onAnimationEnd(animation: Animator) {
                     visibility = View.GONE
                     translationX = 0f
-                    isVisible = false
+                    alpha = 0f
+                    isShown = false
                     isPulsed = false
                     onTurnExecuted?.invoke()
                 }
@@ -168,10 +159,11 @@ class TurnInstructionOverlay @JvmOverloads constructor(
         }
     }
 
-    private fun formatDistance(distanceM: Float): String =
-        if (distanceM >= 1000f) "${"%.1f".format(distanceM / 1000f)} KM"
-        else "${distanceM.toInt()} M"
+    private fun formatDistance(distanceM: Float): String {
+        val miles = distanceM / 1609.344f
+        return if (miles >= 0.1f) "%.1f mi".format(miles)
+        else "${(distanceM * 3.28084f).toInt()} ft"
+    }
 
-    private fun dipToPx(dip: Int): Int =
-        (dip * resources.displayMetrics.density).toInt()
+    private fun dipToPx(dip: Int): Int = (dip * density).toInt()
 }

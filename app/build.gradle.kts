@@ -25,6 +25,11 @@ android {
             "MAPBOX_ACCESS_TOKEN",
             "\"${localProps.getProperty("MAPBOX_ACCESS_TOKEN", "")}\""
         )
+        buildConfigField(
+            "String",
+            "GOOGLE_PLACES_API_KEY",
+            "\"${localProps.getProperty("GOOGLE_PLACES_API_KEY", "")}\""
+        )
     }
 
     buildFeatures {

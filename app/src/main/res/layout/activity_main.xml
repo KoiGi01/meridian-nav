@@ -4,6 +4,7 @@
     android:id="@+id/root_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:splitMotionEvents="false"
     android:background="@color/lidar_black">
 
     <com.mapbox.maps.MapView

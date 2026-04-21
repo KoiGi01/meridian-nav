@@ -6,6 +6,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -17,22 +18,31 @@ import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.lidar.nav.databinding.ActivityMainBinding
-import com.lidar.nav.map.LidarStyleBuilder
 import com.lidar.nav.map.MapCameraManager
+import com.lidar.nav.search.SearchService
+import com.mapbox.bindgen.Value
+import com.mapbox.maps.Style
 import com.lidar.nav.navigation.NavigationManager
 import com.lidar.nav.state.AppStateController
 import com.lidar.nav.ui.HudOverlay
 import com.lidar.nav.ui.IdleOverlay
 import com.lidar.nav.ui.SearchOverlay
-import com.lidar.nav.ui.TurnInstructionOverlay
+import com.lidar.nav.ui.SearchResult
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.ImageHolder
 import com.mapbox.maps.plugin.LocationPuck2D
+import com.mapbox.maps.plugin.PuckBearing
+import com.mapbox.maps.plugin.animation.easeTo
+import com.mapbox.maps.plugin.animation.MapAnimationOptions
 import com.mapbox.maps.plugin.attribution.attribution
 import com.mapbox.maps.plugin.locationcomponent.location
 import com.mapbox.maps.plugin.logo.logo
+import kotlinx.coroutines.launch
+import java.time.LocalTime
+import java.time.format.DateTimeFormatter
 
 class MainActivity : AppCompatActivity() {
 
@@ -53,8 +63,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var idleOverlay: IdleOverlay
     private lateinit var hudOverlay: HudOverlay
     private lateinit var searchOverlay: SearchOverlay
-    private lateinit var turnOverlay: TurnInstructionOverlay
     val appState = AppStateController()
+    private var currentSpeedMph: Int? = null
+    private var currentSpeedLimitMph: Int? = null
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -70,7 +81,13 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         enforceFullscreen()
-        binding.mapView.mapboxMap.loadStyle(LidarStyleBuilder.build()) {
+        binding.mapView.mapboxMap.loadStyle(Style.STANDARD) { style ->
+            style.setStyleImportConfigProperty("basemap", "lightPreset", Value("night"))
+            style.setStyleImportConfigProperty("basemap", "theme", Value("monochrome"))
+            style.setStyleImportConfigProperty("basemap", "show3dObjects", Value(true))
+            style.setStyleImportConfigProperty("basemap", "showRoadLabels", Value(true))
+            style.setStyleImportConfigProperty("basemap", "showPointOfInterestLabels", Value(false))
+            style.setStyleImportConfigProperty("basemap", "showTransitLabels", Value(false))
             binding.mapView.mapboxMap.setCamera(
                 CameraOptions.Builder()
                     .center(Point.fromLngLat(-89.5926, 20.9674))
@@ -87,7 +104,7 @@ class MainActivity : AppCompatActivity() {
             binding.mapView.attribution.updateSettings {
                 enabled = false
             }
-            cameraManager = MapCameraManager(binding.mapView.mapboxMap)
+            cameraManager = MapCameraManager(binding.mapView)
             cameraManager.animateToIdle()
             idleOverlay = IdleOverlay(this).also {
                 binding.rootContainer.addView(
@@ -120,38 +137,34 @@ class MainActivity : AppCompatActivity() {
                 )
             }
             idleOverlay.searchButton.setOnClickListener { searchOverlay.show() }
-            turnOverlay = TurnInstructionOverlay(this).apply {
-                onTurnExecuted = { cameraManager.recenterAfterTurn() }
-            }.also {
-                binding.rootContainer.addView(
-                    it,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { gravity = Gravity.TOP }
-                )
-            }
+            hudOverlay.turnCard.onTurnExecuted = { cameraManager.recenterAfterTurn() }
+            hudOverlay.onRecenter = { cameraManager.recenterAfterTurn() }
+            hudOverlay.onZoomIn = { zoomBy(+1.0) }
+            hudOverlay.onZoomOut = { zoomBy(-1.0) }
+            hudOverlay.onSearch = { searchOverlay.show() }
+            hudOverlay.onVoice = { }
+            hudOverlay.onSettings = { }
             navigationManager = NavigationManager(
                 context = this,
                 mapboxMap = binding.mapView.mapboxMap,
-                onRouteProgress = { distanceRemaining, fractionTraveled, distanceToNextManeuver ->
+                onRouteProgress = { distanceRemaining, durationRemaining, fractionTraveled, distanceToNextManeuver, speedLimitMph ->
+                    currentSpeedLimitMph = speedLimitMph
                     hudOverlay.update(
-                        streetName = "—",
-                        speedKmh = 0,
-                        speedLimit = null,
-                        etaText = formatEta(distanceRemaining),
                         distanceText = formatDistance(distanceRemaining),
+                        durationText = formatDuration(durationRemaining),
+                        arrivalText = formatArrivalClock(durationRemaining),
                         progressFraction = fractionTraveled,
-                        bearingDegrees = binding.mapView.mapboxMap.cameraState.bearing.toFloat()
+                        speedMph = currentSpeedMph,
+                        speedLimitMph = speedLimitMph
                     )
-                    turnOverlay.updateDistance(distanceToNextManeuver)
+                    hudOverlay.turnCard.updateDistance(distanceToNextManeuver)
                     if (distanceToNextManeuver <= MapCameraManager.TURN_APPROACH_METERS) {
                         cameraManager.pivotTowardTurn(15.0)
                     }
                 },
                 onBannerInstruction = { primaryText, maneuverType, distanceM ->
                     if (distanceM <= MapCameraManager.TURN_CARD_TRIGGER_METERS) {
-                        turnOverlay.show(primaryText, maneuverType, distanceM)
+                        hudOverlay.turnCard.show(primaryText, maneuverType, distanceM)
                     }
                 },
                 onArrival = {
@@ -159,8 +172,13 @@ class MainActivity : AppCompatActivity() {
                     transitionToIdle()
                 }
             )
+            hudOverlay.onCancelRoute = {
+                navigationManager.stopNavigation()
+                transitionToIdle()
+            }
             navigationManager.addRouteLayersToStyle()
-            searchOverlay.onResultSelected = { _ -> transitionToRouting() }
+            searchOverlay.onQuery = { query -> runSearch(query) }
+            searchOverlay.onResultSelected = { result -> startRouteTo(result) }
             ensureLocationPermission()
         }
     }
@@ -179,25 +197,18 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun enableLocationComponent() {
-        val crosshair = ImageHolder.from(createCrosshairBitmap())
+        val chevron = ImageHolder.from(createChevronBitmap())
         binding.mapView.location.updateSettings {
             enabled = true
             pulsingEnabled = false
+            puckBearingEnabled = true
+            puckBearing = PuckBearing.COURSE
             locationPuck = LocationPuck2D(
-                topImage = crosshair,
-                bearingImage = crosshair,
+                topImage = null,
+                bearingImage = chevron,
                 shadowImage = null
             )
         }
-        binding.mapView.location.addOnIndicatorPositionChangedListener(object :
-            com.mapbox.maps.plugin.locationcomponent.OnIndicatorPositionChangedListener {
-            override fun onIndicatorPositionChanged(point: Point) {
-                binding.mapView.mapboxMap.setCamera(
-                    CameraOptions.Builder().center(point).build()
-                )
-                binding.mapView.location.removeOnIndicatorPositionChangedListener(this)
-            }
-        })
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -218,23 +229,28 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun createCrosshairBitmap(): Bitmap {
-        val size = 40
+    private fun createChevronBitmap(): Bitmap {
+        val size = 64
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
-            style = Paint.Style.STROKE
-            strokeWidth = 1.5f
+            style = Paint.Style.FILL
         }
-        val cx = size / 2f
-        val cy = size / 2f
-        val r = size * 0.35f
-        canvas.drawCircle(cx, cy, r, paint)
-        canvas.drawLine(cx, 0f, cx, cy - r, paint)
-        canvas.drawLine(cx, cy + r, cx, size.toFloat(), paint)
-        canvas.drawLine(0f, cy, cx - r, cy, paint)
-        canvas.drawLine(cx + r, cy, size.toFloat(), cy, paint)
+        val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(140, 0, 0, 0)
+            style = Paint.Style.STROKE
+            strokeWidth = 1.6f
+        }
+        val path = Path().apply {
+            moveTo(size / 2f, size * 0.12f)
+            lineTo(size * 0.82f, size * 0.86f)
+            lineTo(size / 2f, size * 0.68f)
+            lineTo(size * 0.18f, size * 0.86f)
+            close()
+        }
+        canvas.drawPath(path, fill)
+        canvas.drawPath(path, outline)
         return bitmap
     }
 
@@ -254,14 +270,47 @@ class MainActivity : AppCompatActivity() {
         binding.mapView.onDestroy()
     }
 
-    private fun formatEta(distanceM: Float): String {
-        val minutes = (distanceM / 1000f / 50f * 60f).toInt()
-        return "${minutes}MIN"
+    private fun formatDuration(durationSec: Double): String {
+        val minutes = (durationSec / 60.0).toInt()
+        return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}min"
+        else "${minutes} min"
     }
 
-    private fun formatDistance(distanceM: Float): String =
-        if (distanceM >= 1000f) "${"%.1f".format(distanceM / 1000f)}KM"
-        else "${distanceM.toInt()}M"
+    private fun formatDistance(distanceM: Float): String {
+        val miles = distanceM / 1609.344f
+        return if (miles >= 0.1f) "%.1f mi".format(miles)
+        else "${(distanceM * 3.28084f).toInt()} ft"
+    }
+
+    private fun formatArrivalClock(durationSec: Double): String =
+        LocalTime.now().plusSeconds(durationSec.toLong())
+            .format(DateTimeFormatter.ofPattern("HH:mm"))
+
+    private fun zoomBy(delta: Double) {
+        val currentZoom = binding.mapView.mapboxMap.cameraState.zoom
+        binding.mapView.mapboxMap.easeTo(
+            CameraOptions.Builder().zoom(currentZoom + delta).build(),
+            MapAnimationOptions.mapAnimationOptions { duration(250L) }
+        )
+    }
+
+    private fun runSearch(query: String) {
+        val proximity = cameraManager.lastKnownLocation()
+        lifecycleScope.launch {
+            val hits = SearchService.forward(query, proximity)
+            searchOverlay.showResults(hits.map { SearchResult(it.name, it.address, it.point) })
+        }
+    }
+
+    private fun startRouteTo(result: SearchResult) {
+        val origin = cameraManager.lastKnownLocation()
+        if (origin == null) {
+            Toast.makeText(this, "Waiting for location fix", Toast.LENGTH_SHORT).show()
+            return
+        }
+        navigationManager.requestRoute(origin, result.point)
+        transitionToRouting()
+    }
 
     private fun transitionToRouting() {
         appState.startRouting()

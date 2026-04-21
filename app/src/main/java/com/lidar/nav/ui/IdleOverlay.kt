@@ -25,6 +25,7 @@ class IdleOverlay @JvmOverloads constructor(
     }
 
     init {
+        isMotionEventSplittingEnabled = false
         setBackgroundColor(Color.TRANSPARENT)
         val density = resources.displayMetrics.density
 

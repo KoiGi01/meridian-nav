@@ -1,6 +1,7 @@
 package com.lidar.nav.navigation
 
 import android.content.Context
+import android.util.Log
 import com.mapbox.geojson.LineString
 import com.mapbox.geojson.Point
 import com.mapbox.maps.MapboxMap
@@ -25,7 +26,7 @@ import com.mapbox.api.directions.v5.models.RouteOptions
 class NavigationManager(
     private val context: Context,
     private val mapboxMap: MapboxMap,
-    private val onRouteProgress: (distanceRemaining: Float, fractionTraveled: Float, distanceToNextManeuver: Float) -> Unit,
+    private val onRouteProgress: (distanceRemaining: Float, durationRemaining: Double, fractionTraveled: Float, distanceToNextManeuver: Float, speedLimitMph: Int?) -> Unit,
     private val onBannerInstruction: (primaryText: String, maneuverType: String, distanceM: Float) -> Unit,
     private val onArrival: () -> Unit
 ) {
@@ -41,10 +42,13 @@ class NavigationManager(
     private val routeDrawAnimator = RouteDrawAnimator()
 
     private val routeProgressObserver = RouteProgressObserver { routeProgress ->
+        val speedLimitMph: Int? = null
         onRouteProgress(
             routeProgress.distanceRemaining,
+            routeProgress.durationRemaining,
             routeProgress.fractionTraveled,
-            routeProgress.currentLegProgress?.currentStepProgress?.distanceRemaining ?: 0f
+            routeProgress.currentLegProgress?.currentStepProgress?.distanceRemaining ?: 0f,
+            speedLimitMph
         )
         if (routeProgress.currentState == RouteProgressState.COMPLETE) {
             onArrival()
@@ -85,12 +89,16 @@ class NavigationManager(
                 override fun onFailure(
                     reasons: List<RouterFailure>,
                     routeOptions: RouteOptions
-                ) {}
+                ) {
+                    Log.e("NavigationManager", "Route request failed: ${reasons.joinToString { it.message }}")
+                }
 
                 override fun onCanceled(
                     routeOptions: RouteOptions,
                     routerOrigin: String
-                ) {}
+                ) {
+                    Log.w("NavigationManager", "Route request canceled")
+                }
             }
         )
     }
@@ -98,9 +106,15 @@ class NavigationManager(
     private fun drawRoute(route: NavigationRoute) {
         mapboxMap.getStyle { style ->
             val geometry = route.directionsRoute.geometry()
+            val precision = when (route.directionsRoute.routeOptions()?.geometries()) {
+                "polyline" -> 5
+                else -> 6
+            }
             if (geometry != null) {
                 style.getSourceAs<GeoJsonSource>(ROUTE_SOURCE_ID)
-                    ?.geometry(LineString.fromPolyline(geometry, 5))
+                    ?.geometry(LineString.fromPolyline(geometry, precision))
+            } else {
+                Log.e("NavigationManager", "Route geometry is null")
             }
         }
         routeDrawAnimator.animateRouteOn(mapboxMap) {
