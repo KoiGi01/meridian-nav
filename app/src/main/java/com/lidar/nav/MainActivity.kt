@@ -80,7 +80,7 @@ class MainActivity : AppCompatActivity() {
         if (locGranted) enableLocationComponent()
         
         if (grants[Manifest.permission.RECORD_AUDIO] == true) {
-            startService(Intent(this, MusicReactivityService::class.java))
+            startForegroundService(Intent(this, MusicReactivityService::class.java))
         }
     }
 
@@ -215,7 +215,7 @@ class MainActivity : AppCompatActivity() {
             enableLocationComponent()
         }
         if (audio == PackageManager.PERMISSION_GRANTED) {
-            startService(Intent(this, MusicReactivityService::class.java))
+            startForegroundService(Intent(this, MusicReactivityService::class.java))
         }
 
         val toRequest = mutableListOf<String>()
