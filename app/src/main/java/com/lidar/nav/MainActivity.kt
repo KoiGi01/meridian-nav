@@ -15,15 +15,10 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
 import android.widget.Toast
-import android.content.BroadcastReceiver
-import android.content.Context
-import android.content.Intent
-import android.content.IntentFilter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.lidar.nav.databinding.ActivityMainBinding
 import com.lidar.nav.map.MapCameraManager
 import com.lidar.nav.search.SearchService
@@ -31,8 +26,9 @@ import com.mapbox.bindgen.Value
 import com.mapbox.maps.Style
 import com.lidar.nav.navigation.NavigationManager
 import com.lidar.nav.state.AppStateController
-import com.lidar.nav.ui.HudOverlay
+import com.lidar.nav.ui.BottomRailView
 import com.lidar.nav.ui.IdleOverlay
+import com.lidar.nav.ui.MapControlsView
 import com.lidar.nav.ui.SearchOverlay
 import com.lidar.nav.ui.SearchResult
 import com.mapbox.geojson.Point
@@ -52,6 +48,7 @@ import java.time.format.DateTimeFormatter
 class MainActivity : AppCompatActivity() {
 
     companion object {
+        @Suppress("DEPRECATION")
         const val IMMERSIVE_FLAGS = (
             View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
             or View.SYSTEM_UI_FLAG_FULLSCREEN
@@ -60,13 +57,15 @@ class MainActivity : AppCompatActivity() {
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         )
+        private const val RAIL_HEIGHT_DP = 88
     }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraManager: MapCameraManager
     private lateinit var navigationManager: NavigationManager
     private lateinit var idleOverlay: IdleOverlay
-    private lateinit var hudOverlay: HudOverlay
+    private lateinit var rail: BottomRailView
+    private lateinit var mapControls: MapControlsView
     private lateinit var searchOverlay: SearchOverlay
     val appState = AppStateController()
     private var currentSpeedMph: Int? = null
@@ -78,17 +77,6 @@ class MainActivity : AppCompatActivity() {
         val locGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
         if (locGranted) enableLocationComponent()
-        
-        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
-            startForegroundService(Intent(this, MusicReactivityService::class.java))
-        }
-    }
-
-    private val audioIntensityReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val intensity = intent?.getFloatExtra(MusicReactivityService.EXTRA_INTENSITY, 0f) ?: 0f
-            binding.reactivityGrid.onBeat(intensity)
-        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -96,6 +84,7 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
         enforceFullscreen()
+
         binding.mapView.mapboxMap.loadStyle(Style.STANDARD) { style ->
             style.setStyleImportConfigProperty("basemap", "lightPreset", Value("night"))
             style.setStyleImportConfigProperty("basemap", "theme", Value("monochrome"))
@@ -103,6 +92,7 @@ class MainActivity : AppCompatActivity() {
             style.setStyleImportConfigProperty("basemap", "showRoadLabels", Value(true))
             style.setStyleImportConfigProperty("basemap", "showPointOfInterestLabels", Value(false))
             style.setStyleImportConfigProperty("basemap", "showTransitLabels", Value(false))
+
             binding.mapView.mapboxMap.setCamera(
                 CameraOptions.Builder()
                     .center(Point.fromLngLat(-89.5926, 20.9674))
@@ -110,17 +100,21 @@ class MainActivity : AppCompatActivity() {
                     .zoom(16.0)
                     .build()
             )
+
+            val railHeightPx = (RAIL_HEIGHT_DP * resources.displayMetrics.density).toInt()
+
             binding.mapView.logo.updateSettings {
                 position = Gravity.BOTTOM or Gravity.END
-                marginBottom = 24f
-                marginRight = 24f
+                marginBottom = railHeightPx + 8f
+                marginRight = 16f
                 marginLeft = 0f
             }
-            binding.mapView.attribution.updateSettings {
-                enabled = false
-            }
+            binding.mapView.attribution.updateSettings { enabled = false }
+
             cameraManager = MapCameraManager(binding.mapView)
             cameraManager.animateToIdle()
+
+            // ── IDLE OVERLAY ──────────────────────────────────────────────────────
             idleOverlay = IdleOverlay(this).also {
                 binding.rootContainer.addView(
                     it,
@@ -130,18 +124,46 @@ class MainActivity : AppCompatActivity() {
                     )
                 )
             }
-            hudOverlay = HudOverlay(this).apply {
-                visibility = View.GONE
-                alpha = 0f
-            }.also {
-                binding.rootContainer.addView(
-                    it,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                )
+
+            // ── BOTTOM RAIL ───────────────────────────────────────────────────────
+            // Accent line (2dp cyan) sits directly above the rail
+            val accentLine = View(this).apply {
+                setBackgroundColor(Color.parseColor("#00E5FF"))
             }
+            binding.rootContainer.addView(accentLine, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, (2 * resources.displayMetrics.density).toInt()
+            ).apply {
+                gravity = Gravity.BOTTOM
+                bottomMargin = railHeightPx
+            })
+
+            rail = BottomRailView(this).apply {
+                onSearch = { searchOverlay.show() }
+                onCancelRoute = {
+                    navigationManager.stopNavigation()
+                    transitionToIdle()
+                }
+            }
+            binding.rootContainer.addView(rail, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT, railHeightPx
+            ).apply { gravity = Gravity.BOTTOM })
+
+            // ── MAP CONTROLS (top-right) ──────────────────────────────────────────
+            mapControls = MapControlsView(this).apply {
+                onRecenter = { cameraManager.recenterAfterTurn() }
+                onZoomIn = { zoomBy(+1.0) }
+                onZoomOut = { zoomBy(-1.0) }
+            }
+            binding.rootContainer.addView(mapControls, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.WRAP_CONTENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                topMargin = (24 * resources.displayMetrics.density).toInt()
+                rightMargin = (16 * resources.displayMetrics.density).toInt()
+            })
+
+            // ── SEARCH OVERLAY ────────────────────────────────────────────────────
             searchOverlay = SearchOverlay(this).also {
                 binding.rootContainer.addView(
                     it,
@@ -151,84 +173,52 @@ class MainActivity : AppCompatActivity() {
                     ).apply { gravity = Gravity.BOTTOM }
                 )
             }
+
+            // ── WIRING ────────────────────────────────────────────────────────────
             idleOverlay.searchButton.setOnClickListener { searchOverlay.show() }
-            hudOverlay.turnCard.onTurnExecuted = { cameraManager.recenterAfterTurn() }
-            hudOverlay.onRecenter = { cameraManager.recenterAfterTurn() }
-            hudOverlay.onZoomIn = { zoomBy(+1.0) }
-            hudOverlay.onZoomOut = { zoomBy(-1.0) }
-            hudOverlay.onSearch = { searchOverlay.show() }
-            hudOverlay.onVoice = { }
-            hudOverlay.onSettings = { }
+
             navigationManager = NavigationManager(
                 context = this,
                 mapboxMap = binding.mapView.mapboxMap,
                 onRouteProgress = { distanceRemaining, durationRemaining, fractionTraveled, distanceToNextManeuver, speedLimitMph ->
                     currentSpeedLimitMph = speedLimitMph
-                    hudOverlay.update(
+                    rail.updateTrip(
                         distanceText = formatDistance(distanceRemaining),
                         durationText = formatDuration(durationRemaining),
-                        arrivalText = formatArrivalClock(durationRemaining),
-                        progressFraction = fractionTraveled,
-                        speedMph = currentSpeedMph,
-                        speedLimitMph = speedLimitMph
+                        arrivalText = formatArrivalClock(durationRemaining)
                     )
-                    hudOverlay.turnCard.updateDistance(distanceToNextManeuver)
+                    rail.updateManeuverDistance(distanceToNextManeuver)
                     if (distanceToNextManeuver <= MapCameraManager.TURN_APPROACH_METERS) {
                         cameraManager.pivotTowardTurn(15.0)
                     }
                 },
                 onBannerInstruction = { primaryText, maneuverType, distanceM ->
-                    if (distanceM <= MapCameraManager.TURN_CARD_TRIGGER_METERS) {
-                        hudOverlay.turnCard.show(primaryText, maneuverType, distanceM)
-                    }
+                    rail.updateManeuver(primaryText, maneuverType, distanceM)
                 },
                 onArrival = {
                     appState.arrive()
                     transitionToIdle()
                 }
             )
-            hudOverlay.onCancelRoute = {
-                navigationManager.stopNavigation()
-                transitionToIdle()
-            }
+
             navigationManager.addRouteLayersToStyle()
-            binding.mapView.mapboxMap.subscribeCameraChanged {
-                hudOverlay.compass.setBearing(binding.mapView.mapboxMap.cameraState.bearing.toFloat())
-            }
             searchOverlay.onQuery = { query -> runSearch(query) }
             searchOverlay.onResultSelected = { result -> startRouteTo(result) }
             ensurePermissions()
-            
-            LocalBroadcastManager.getInstance(this).registerReceiver(
-                audioIntensityReceiver,
-                IntentFilter(MusicReactivityService.ACTION_MUSIC_INTENSITY_UPDATE)
-            )
         }
     }
 
     private fun ensurePermissions() {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-        val audio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
 
         if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
             enableLocationComponent()
-        }
-        if (audio == PackageManager.PERMISSION_GRANTED) {
-            startForegroundService(Intent(this, MusicReactivityService::class.java))
-        }
-
-        val toRequest = mutableListOf<String>()
-        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
-            toRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
-            toRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
-        }
-        if (audio != PackageManager.PERMISSION_GRANTED) {
-            toRequest.add(Manifest.permission.RECORD_AUDIO)
-        }
-        
-        if (toRequest.isNotEmpty()) {
-            permissionLauncher.launch(toRequest.toTypedArray())
+        } else {
+            permissionLauncher.launch(arrayOf(
+                Manifest.permission.ACCESS_FINE_LOCATION,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ))
         }
     }
 
@@ -290,34 +280,22 @@ class MainActivity : AppCompatActivity() {
         return bitmap
     }
 
-    override fun onStart() {
-        super.onStart()
-        binding.mapView.onStart()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        binding.mapView.onStop()
-    }
-
+    override fun onStart() { super.onStart(); binding.mapView.onStart() }
+    override fun onStop() { super.onStop(); binding.mapView.onStop() }
     override fun onDestroy() {
         super.onDestroy()
-        LocalBroadcastManager.getInstance(this).unregisterReceiver(audioIntensityReceiver)
-        stopService(Intent(this, MusicReactivityService::class.java))
         if (::navigationManager.isInitialized) navigationManager.onDestroy()
         binding.mapView.onDestroy()
     }
 
     private fun formatDuration(durationSec: Double): String {
         val minutes = (durationSec / 60.0).toInt()
-        return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}min"
-        else "${minutes} min"
+        return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
     }
 
     private fun formatDistance(distanceM: Float): String {
         val miles = distanceM / 1609.344f
-        return if (miles >= 0.1f) "%.1f mi".format(miles)
-        else "${(distanceM * 3.28084f).toInt()} ft"
+        return if (miles >= 0.1f) "%.1f mi".format(miles) else "${(distanceM * 3.28084f).toInt()} ft"
     }
 
     private fun formatArrivalClock(durationSec: Double): String =
@@ -353,13 +331,13 @@ class MainActivity : AppCompatActivity() {
     private fun transitionToRouting() {
         appState.startRouting()
         idleOverlay.visibility = View.GONE
-        hudOverlay.show()
+        rail.showNavigating()
         cameraManager.animateToRouting()
     }
 
     private fun transitionToIdle() {
         appState.cancelRoute()
-        hudOverlay.hide()
+        rail.showIdle()
         idleOverlay.visibility = View.VISIBLE
         cameraManager.animateToIdle()
     }
