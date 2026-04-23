@@ -30,19 +30,18 @@ class TripProgressPillView @JvmOverloads constructor(
     private val distValue: TextView
     private val timeValue: TextView
     private val segBar: SegmentedBar
-    private val cancelButton: IconButton
 
     var onCancel: (() -> Unit)? = null
 
     init {
         val padH = (20 * density).toInt()
-        val padV = (10 * density).toInt()
+        val padV = (12 * density).toInt()
         setPadding(padH, padV, padH, padV)
-        background = BracketDrawable(
-            legLengthPx = 12 * density,
-            strokeWidthPx = 1.2f * density,
-            strokeColor = Color.WHITE,
-            fillColor = Color.parseColor("#CC000000")
+        background = CyberBracketDrawable(
+            legLengthPx = 16 * density,
+            strokeWidthPx = 2f * density,
+            strokeColor = Color.parseColor("#00E5FF"),
+            fillColor = Color.parseColor("#CC000A14")
         )
 
         val row = LinearLayout(context).apply {
@@ -54,9 +53,7 @@ class TripProgressPillView @JvmOverloads constructor(
         val textBlock = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         row.addView(textBlock, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
 
-        val dataRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-        }
+        val dataRow = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
         textBlock.addView(dataRow)
 
         val etaCol = fieldColumn("ETA", "--:--").also { dataRow.addView(it.first, spaced()) }
@@ -68,25 +65,35 @@ class TripProgressPillView @JvmOverloads constructor(
 
         segBar = SegmentedBar(context)
         textBlock.addView(segBar, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, (4 * density).toInt()
-        ).apply { topMargin = (8 * density).toInt() })
+            LinearLayout.LayoutParams.MATCH_PARENT, (6 * density).toInt()
+        ).apply { topMargin = (10 * density).toInt() })
 
-        cancelButton = IconButton(context).apply {
+        // ABORT — inner bracket wraps the icon button
+        val abortWrapper = FrameLayout(context).apply {
+            background = CyberBracketDrawable(
+                legLengthPx = 8 * density,
+                strokeWidthPx = 1.5f * density,
+                strokeColor = Color.parseColor("#00E5FF"),
+                fillColor = Color.parseColor("#80001820")
+            )
+        }
+        val cancelButton = IconButton(context).apply {
             setIconResource(R.drawable.ic_close)
             setLabel("ABORT")
             setOnClickListener { onCancel?.invoke() }
         }
-        val btnSize = (56 * density).toInt()
-        row.addView(cancelButton, LinearLayout.LayoutParams(btnSize, btnSize).apply {
-            leftMargin = (16 * density).toInt()
-        })
+        val btnSize = (60 * density).toInt()
+        abortWrapper.addView(cancelButton, FrameLayout.LayoutParams(btnSize, btnSize))
+        row.addView(abortWrapper, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { leftMargin = (20 * density).toInt() })
     }
 
     private fun fieldColumn(label: String, initial: String): Pair<LinearLayout, TextView> {
         val col = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         col.addView(TextView(context).apply {
             text = label
-            setTextColor(Color.parseColor("#99FFFFFF"))
+            setTextColor(Color.parseColor("#00E5FF"))
             textSize = 9f
             typeface = mono
             letterSpacing = 0.2f
@@ -94,7 +101,7 @@ class TripProgressPillView @JvmOverloads constructor(
         val value = TextView(context).apply {
             text = initial
             setTextColor(Color.WHITE)
-            textSize = 16f
+            textSize = 18f
             typeface = Typeface.create(mono, Typeface.BOLD)
         }
         col.addView(value)
@@ -104,12 +111,12 @@ class TripProgressPillView @JvmOverloads constructor(
     private fun spaced() = LinearLayout.LayoutParams(
         LinearLayout.LayoutParams.WRAP_CONTENT,
         LinearLayout.LayoutParams.WRAP_CONTENT
-    ).apply { rightMargin = (24 * density).toInt() }
+    ).apply { rightMargin = (28 * density).toInt() }
 
     fun update(distanceText: String, durationText: String, arrivalText: String, fraction: Float) {
-        this.distValue.text = distanceText
-        this.timeValue.text = durationText
-        this.etaValue.text = arrivalText
+        distValue.text = distanceText
+        timeValue.text = durationText
+        etaValue.text = arrivalText
         segBar.fraction = fraction.coerceIn(0f, 1f)
     }
 
@@ -117,14 +124,19 @@ class TripProgressPillView @JvmOverloads constructor(
         var fraction: Float = 0f
             set(value) { field = value; invalidate() }
 
-        private val segments = 20
-        private val gapRatio = 0.25f
+        private val segments = 9
+        private val gapRatio = 0.5f
 
         private val inactivePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#33FFFFFF")
+            color = Color.parseColor("#2200E5FF")
         }
         private val activePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#FF6b0919")
+            color = Color.parseColor("#00E5FF")
+            setShadowLayer(6f, 0f, 0f, Color.parseColor("#CC00E5FF"))
+        }
+
+        init {
+            setLayerType(LAYER_TYPE_SOFTWARE, null)
         }
 
         override fun onDraw(canvas: Canvas) {

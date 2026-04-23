@@ -14,16 +14,17 @@ class HudOverlay @JvmOverloads constructor(
 ) : FrameLayout(context, attrs) {
 
     val turnCard: TurnInstructionOverlay
-    val speedPair: SpeedPairView
+    val topMetrics: TopBarMetricsView
     val progressPill: TripProgressPillView
-    val searchFab: IconButton
-    private val rightStack: LinearLayout
+    val compass: CompassView
+
+    private val leftStack: LinearLayout
 
     val recenterButton: IconButton
     val zoomInButton: IconButton
     val zoomOutButton: IconButton
     val voiceButton: IconButton
-    val settingsButton: IconButton
+    val searchButton: IconButton
 
     var onRecenter: (() -> Unit)? = null
     var onZoomIn: (() -> Unit)? = null
@@ -39,19 +40,34 @@ class HudOverlay @JvmOverloads constructor(
         isMotionEventSplittingEnabled = false
         setBackgroundColor(Color.TRANSPARENT)
         val margin = (20 * density).toInt()
-        val btnSize = (60 * density).toInt()
+        val btnSize = (72 * density).toInt()
 
-        turnCard = TurnInstructionOverlay(context).also {
-            addView(it, LayoutParams(
-                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                leftMargin = margin
-                topMargin = margin
-            })
+        // 1. Left Stack (vertical column of utilities)
+        leftStack = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
         }
+        addView(leftStack, LayoutParams(
+            LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+        ).apply {
+            gravity = Gravity.CENTER_VERTICAL or Gravity.START
+            leftMargin = margin
+        })
 
-        speedPair = SpeedPairView(context).also {
+        recenterButton = iconBtn(R.drawable.ic_recenter, "") { onRecenter?.invoke() }
+        zoomInButton = iconBtn(R.drawable.ic_zoom_in, "") { onZoomIn?.invoke() }
+        zoomOutButton = iconBtn(R.drawable.ic_zoom_out, "") { onZoomOut?.invoke() }
+        voiceButton = iconBtn(R.drawable.ic_voice, "") { onVoice?.invoke() }
+        searchButton = iconBtn(R.drawable.ic_search, "") { onSearch?.invoke() }
+
+        listOf(recenterButton, zoomInButton, zoomOutButton, voiceButton, searchButton)
+            .forEach { btn ->
+                leftStack.addView(btn, LinearLayout.LayoutParams(btnSize, btnSize).apply {
+                    bottomMargin = (12 * density).toInt()
+                })
+            }
+
+        // 2. Top Center (Speed / Metrics)
+        topMetrics = TopBarMetricsView(context).also {
             addView(it, LayoutParams(
                 LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
             ).apply {
@@ -60,40 +76,18 @@ class HudOverlay @JvmOverloads constructor(
             })
         }
 
-        rightStack = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
+        // 3. Top Right (Turn Instruction)
+        turnCard = TurnInstructionOverlay(context).also {
+            addView(it, LayoutParams(
+                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.END
+                rightMargin = margin
+                topMargin = margin
+            })
         }
-        addView(rightStack, LayoutParams(
-            LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
-        ).apply {
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-            rightMargin = margin
-        })
 
-        recenterButton = iconBtn(R.drawable.ic_recenter, "RCTR") { onRecenter?.invoke() }
-        zoomInButton = iconBtn(R.drawable.ic_zoom_in, "ZM+") { onZoomIn?.invoke() }
-        zoomOutButton = iconBtn(R.drawable.ic_zoom_out, "ZM-") { onZoomOut?.invoke() }
-        voiceButton = iconBtn(R.drawable.ic_voice, "VOX") { onVoice?.invoke() }
-        settingsButton = iconBtn(R.drawable.ic_settings, "CFG") { onSettings?.invoke() }
-
-        listOf(recenterButton, zoomInButton, zoomOutButton, voiceButton, settingsButton)
-            .forEach { btn ->
-                rightStack.addView(btn, LinearLayout.LayoutParams(btnSize, btnSize).apply {
-                    bottomMargin = (8 * density).toInt()
-                })
-            }
-
-        searchFab = IconButton(context).apply {
-            setIconResource(R.drawable.ic_search)
-            setLabel("SRCH")
-            setOnClickListener { onSearch?.invoke() }
-        }
-        addView(searchFab, LayoutParams(btnSize, btnSize).apply {
-            gravity = Gravity.BOTTOM or Gravity.START
-            leftMargin = margin
-            bottomMargin = margin
-        })
-
+        // 4. Bottom Center (Trip Progress Pill)
         progressPill = TripProgressPillView(context).apply {
             onCancel = { onCancelRoute?.invoke() }
         }
@@ -101,8 +95,18 @@ class HudOverlay @JvmOverloads constructor(
             LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
         ).apply {
             gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-            bottomMargin = margin
-            width = (480 * density).toInt()
+            bottomMargin = (12 * density).toInt()
+            width = (600 * density).toInt()
+        })
+
+        // 5. Bottom Right (Compass)
+        compass = CompassView(context)
+        addView(compass, LayoutParams(
+            (120 * density).toInt(), (120 * density).toInt()
+        ).apply {
+            gravity = Gravity.BOTTOM or Gravity.END
+            rightMargin = (20 * density).toInt()
+            bottomMargin = (20 * density).toInt()
         })
     }
 
@@ -121,7 +125,8 @@ class HudOverlay @JvmOverloads constructor(
         speedLimitMph: Int?
     ) {
         progressPill.update(distanceText, durationText, arrivalText, progressFraction)
-        speedPair.update(speedMph, speedLimitMph)
+        // Convert MPH to KMH approx for the HUD (mocked representation)
+        topMetrics.updateSpeed((speedMph?.toFloat()?.times(1.609f))?.toInt())
     }
 
     fun show() {

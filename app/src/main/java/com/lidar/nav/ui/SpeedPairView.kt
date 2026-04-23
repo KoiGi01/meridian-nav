@@ -29,15 +29,15 @@ class SpeedPairView @JvmOverloads constructor(
     init {
         orientation = HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        val padH = (14 * density).toInt()
-        val padV = (8 * density).toInt()
+        val padH = (20 * density).toInt()
+        val padV = (12 * density).toInt()
         setPadding(padH, padV, padH, padV)
-        background = BracketDrawable(
-            legLengthPx = 10 * density,
-            strokeWidthPx = 1.2f * density,
-            strokeColor = Color.WHITE,
-            fillColor = Color.parseColor("#CC000000")
-        )
+        
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(Color.parseColor("#E6000000"))
+            setStroke((2 * density).toInt(), Color.parseColor("#FF0033")) // Vivid Red glow
+            cornerRadius = 0f
+        }
 
         spdColumn = column("SPD").also { addView(it) }
         spdValue = value().also { spdColumn.addView(it) }
@@ -67,7 +67,7 @@ class SpeedPairView @JvmOverloads constructor(
     private fun value() = TextView(context).apply {
         text = "--"
         setTextColor(Color.WHITE)
-        textSize = 26f
+        textSize = 48f
         typeface = Typeface.create(mono, Typeface.BOLD)
         gravity = Gravity.CENTER
         setPadding(0, (2 * density).toInt(), 0, 0)
@@ -82,7 +82,9 @@ class SpeedPairView @JvmOverloads constructor(
         limValue.text = limitMph?.toString() ?: "--"
         val over = speedMph != null && limitMph != null && speedMph > limitMph
         spdValue.setTextColor(if (over) Color.parseColor("#FF6b0919") else Color.WHITE)
-        (background as? BracketDrawable)?.strokeTint =
-            if (over) Color.parseColor("#FF6b0919") else Color.WHITE
+        (background as? android.graphics.drawable.GradientDrawable)?.setStroke(
+            (2 * density).toInt(),
+            if (over) Color.WHITE else Color.parseColor("#FF0033")
+        )
     }
 }

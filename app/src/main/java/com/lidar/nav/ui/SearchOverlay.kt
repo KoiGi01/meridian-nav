@@ -3,7 +3,6 @@ package com.lidar.nav.ui
 import android.content.Context
 import android.graphics.Color
 import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
@@ -12,10 +11,10 @@ import android.util.AttributeSet
 import android.view.Gravity
 import android.view.View
 import android.view.animation.DecelerateInterpolator
-import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
 import androidx.core.content.res.ResourcesCompat
 import com.lidar.nav.R
@@ -40,39 +39,83 @@ class SearchOverlay @JvmOverloads constructor(
     private val resultsList: LinearLayout
     private val debouncer = Handler(Looper.getMainLooper())
     private var pendingQuery: Runnable? = null
+    private val customKeyboard: CustomKeyboardView
 
     init {
-        orientation = VERTICAL
-        setBackgroundColor(Color.parseColor("#F0000000"))
+        orientation = HORIZONTAL
+        setBackgroundColor(Color.parseColor("#F2000A10"))
         translationY = 2000f
         visibility = View.GONE
         isMotionEventSplittingEnabled = false
+        weightSum = 2f
+        val outerPad = dipToPx(24)
+        setPadding(outerPad, outerPad, outerPad, outerPad)
+
+        // LEFT PANEL (Search & Results)
+        val leftPanel = LinearLayout(context).apply {
+            orientation = VERTICAL
+        }
 
         val searchContainer = FrameLayout(context).apply {
-            val border = GradientDrawable().apply {
-                setColor(Color.parseColor("#1A000000"))
-                setStroke(1, Color.parseColor("#6b0919"))
-                cornerRadius = 0f
-            }
-            background = border
+            background = CyberBracketDrawable(
+                legLengthPx = 14 * resources.displayMetrics.density,
+                strokeWidthPx = 1.5f * resources.displayMetrics.density,
+                strokeColor = Color.parseColor("#00E5FF"),
+                fillColor = Color.parseColor("#66001820")
+            )
         }
-        addView(searchContainer, LayoutParams(LayoutParams.MATCH_PARENT, dipToPx(56)))
+        leftPanel.addView(searchContainer, LayoutParams(LayoutParams.MATCH_PARENT, dipToPx(72)).apply {
+            bottomMargin = dipToPx(12)
+        })
 
         searchField = EditText(context).apply {
-            hint = "DESTINATION"
-            setHintTextColor(Color.parseColor("#446b0919"))
-            setTextColor(Color.WHITE)
-            textSize = 14f
+            hint = "> DESTINATION_QUERY"
+            setHintTextColor(Color.parseColor("#6600E5FF"))
+            setTextColor(Color.parseColor("#E0FBFF"))
+            textSize = 18f
             typeface = monoTypeface
+            letterSpacing = 0.15f
             background = null
-            setPadding(dipToPx(16), 0, dipToPx(16), 0)
+            setPadding(dipToPx(28), 0, dipToPx(28), 0)
+            showSoftInputOnFocus = false // Disable native keyboard
+            isFocusableInTouchMode = true
         }
         searchContainer.addView(searchField, FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
         ).apply { gravity = Gravity.CENTER_VERTICAL })
 
         resultsList = LinearLayout(context).apply { orientation = VERTICAL }
-        addView(resultsList, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT))
+        val scroller = ScrollView(context).apply { addView(resultsList) }
+        leftPanel.addView(scroller, LayoutParams(LayoutParams.MATCH_PARENT, 0, 1f))
+
+        addView(leftPanel, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
+
+        // RIGHT PANEL (Custom Keyboard)
+        customKeyboard = CustomKeyboardView(context)
+        customKeyboard.onKey = { key ->
+            val curr = searchField.text.toString()
+            searchField.setText(curr + key)
+            searchField.setSelection(curr.length + 1)
+        }
+        customKeyboard.onSpace = {
+            val curr = searchField.text.toString()
+            searchField.setText(curr + " ")
+            searchField.setSelection(curr.length + 1)
+        }
+        customKeyboard.onBackspace = {
+            val curr = searchField.text.toString()
+            if (curr.isNotEmpty()) {
+                searchField.setText(curr.dropLast(1))
+                searchField.setSelection(curr.length - 1)
+            }
+        }
+        
+        val rightPanel = FrameLayout(context)
+        rightPanel.addView(customKeyboard, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.WRAP_CONTENT, FrameLayout.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.CENTER })
+
+        addView(rightPanel, LayoutParams(0, LayoutParams.MATCH_PARENT, 1f))
 
         searchField.addTextChangedListener(object : TextWatcher {
             override fun afterTextChanged(s: Editable?) { onQueryChanged(s?.toString() ?: "") }
@@ -95,40 +138,43 @@ class SearchOverlay @JvmOverloads constructor(
 
     fun showResults(results: List<SearchResult>) {
         resultsList.removeAllViews()
-        results.forEach { result ->
+        val d = resources.displayMetrics.density
+        results.forEachIndexed { idx, result ->
             val row = LinearLayout(context).apply {
                 orientation = LinearLayout.VERTICAL
-                setPadding(dipToPx(16), dipToPx(14), dipToPx(16), dipToPx(14))
-                minimumHeight = dipToPx(56)
-                val border = GradientDrawable().apply {
-                    setColor(Color.TRANSPARENT)
-                    setStroke(0, Color.parseColor("#336b0919"))
-                }
-                background = border
+                setPadding(dipToPx(22), dipToPx(14), dipToPx(22), dipToPx(14))
+                background = CyberBracketDrawable(
+                    legLengthPx = 6f * d,
+                    strokeWidthPx = 1f * d,
+                    strokeColor = Color.parseColor(if (idx == 0) "#00E5FF" else "#6600E5FF"),
+                    fillColor = Color.parseColor("#33000A12")
+                )
                 setOnClickListener {
                     onResultSelected?.invoke(result)
                     dismiss()
                 }
             }
             row.addView(TextView(context).apply {
-                text = result.name
-                setTextColor(Color.WHITE)
-                textSize = 13f
+                text = "› ${result.name}"
+                setTextColor(Color.parseColor("#E8FBFF"))
+                textSize = 15f
                 typeface = monoTypeface
+                letterSpacing = 0.08f
             })
             if (result.address.isNotEmpty()) {
                 row.addView(TextView(context).apply {
                     text = result.address
-                    setTextColor(Color.parseColor("#80FFFFFF"))
-                    textSize = 10f
+                    setTextColor(Color.parseColor("#7A00E5FF"))
+                    textSize = 11f
                     typeface = monoTypeface
+                    letterSpacing = 0.12f
+                    setPadding(0, (2 * d).toInt(), 0, 0)
                 })
             }
-            resultsList.addView(row)
-            resultsList.addView(View(context).apply {
-                setBackgroundColor(Color.parseColor("#1A6b0919"))
-                layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 1)
-            })
+            resultsList.addView(row, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { topMargin = (8 * d).toInt() })
         }
     }
 
@@ -138,13 +184,10 @@ class SearchOverlay @JvmOverloads constructor(
         animate().translationY(0f).setDuration(400)
             .setInterpolator(DecelerateInterpolator()).start()
         searchField.requestFocus()
-        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .showSoftInput(searchField, InputMethodManager.SHOW_IMPLICIT)
     }
 
     fun dismiss() {
-        (context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager)
-            .hideSoftInputFromWindow(searchField.windowToken, 0)
+        searchField.text.clear()
         animate().translationY(height.toFloat().coerceAtLeast(600f)).setDuration(300)
             .withEndAction { visibility = View.GONE; onDismissed?.invoke() }.start()
     }

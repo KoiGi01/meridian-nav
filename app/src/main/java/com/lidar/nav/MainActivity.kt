@@ -15,10 +15,15 @@ import android.view.WindowInsets
 import android.view.WindowInsetsController
 import android.widget.FrameLayout
 import android.widget.Toast
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.localbroadcastmanager.content.LocalBroadcastManager
 import com.lidar.nav.databinding.ActivityMainBinding
 import com.lidar.nav.map.MapCameraManager
 import com.lidar.nav.search.SearchService
@@ -67,13 +72,23 @@ class MainActivity : AppCompatActivity() {
     private var currentSpeedMph: Int? = null
     private var currentSpeedLimitMph: Int? = null
 
-    private val locationPermissionLauncher = registerForActivityResult(
+    private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { grants ->
-        val granted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+        val locGranted = grants[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
             grants[Manifest.permission.ACCESS_COARSE_LOCATION] == true
-        if (granted) enableLocationComponent()
-        else Toast.makeText(this, "Location permission required to navigate", Toast.LENGTH_LONG).show()
+        if (locGranted) enableLocationComponent()
+        
+        if (grants[Manifest.permission.RECORD_AUDIO] == true) {
+            startService(Intent(this, MusicReactivityService::class.java))
+        }
+    }
+
+    private val audioIntensityReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val intensity = intent?.getFloatExtra(MusicReactivityService.EXTRA_INTENSITY, 0f) ?: 0f
+            binding.reactivityGrid.onBeat(intensity)
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -177,22 +192,43 @@ class MainActivity : AppCompatActivity() {
                 transitionToIdle()
             }
             navigationManager.addRouteLayersToStyle()
+            binding.mapView.mapboxMap.subscribeCameraChanged {
+                hudOverlay.compass.setBearing(binding.mapView.mapboxMap.cameraState.bearing.toFloat())
+            }
             searchOverlay.onQuery = { query -> runSearch(query) }
             searchOverlay.onResultSelected = { result -> startRouteTo(result) }
-            ensureLocationPermission()
+            ensurePermissions()
+            
+            LocalBroadcastManager.getInstance(this).registerReceiver(
+                audioIntensityReceiver,
+                IntentFilter(MusicReactivityService.ACTION_MUSIC_INTENSITY_UPDATE)
+            )
         }
     }
 
-    private fun ensureLocationPermission() {
+    private fun ensurePermissions() {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+        val audio = ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
+
         if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
             enableLocationComponent()
-        } else {
-            locationPermissionLauncher.launch(arrayOf(
-                Manifest.permission.ACCESS_FINE_LOCATION,
-                Manifest.permission.ACCESS_COARSE_LOCATION
-            ))
+        }
+        if (audio == PackageManager.PERMISSION_GRANTED) {
+            startService(Intent(this, MusicReactivityService::class.java))
+        }
+
+        val toRequest = mutableListOf<String>()
+        if (fine != PackageManager.PERMISSION_GRANTED && coarse != PackageManager.PERMISSION_GRANTED) {
+            toRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            toRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+        }
+        if (audio != PackageManager.PERMISSION_GRANTED) {
+            toRequest.add(Manifest.permission.RECORD_AUDIO)
+        }
+        
+        if (toRequest.isNotEmpty()) {
+            permissionLauncher.launch(toRequest.toTypedArray())
         }
     }
 
@@ -266,6 +302,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        LocalBroadcastManager.getInstance(this).unregisterReceiver(audioIntensityReceiver)
+        stopService(Intent(this, MusicReactivityService::class.java))
         if (::navigationManager.isInitialized) navigationManager.onDestroy()
         binding.mapView.onDestroy()
     }

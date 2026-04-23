@@ -47,11 +47,11 @@ class TurnInstructionOverlay @JvmOverloads constructor(
         card = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            background = BracketDrawable(
-                legLengthPx = 12 * density,
-                strokeWidthPx = 1.2f * density,
-                strokeColor = Color.WHITE,
-                fillColor = Color.parseColor("#CC000000")
+            background = CyberBracketDrawable(
+                legLengthPx = 10 * density,
+                strokeWidthPx = 1.5f * density,
+                strokeColor = Color.parseColor("#00E5FF"),
+                fillColor = Color.parseColor("#80001015")
             )
             setPadding(
                 (18 * density).toInt(), (12 * density).toInt(),
@@ -70,8 +70,8 @@ class TurnInstructionOverlay @JvmOverloads constructor(
         card.addView(textBlock)
 
         headerView = TextView(context).apply {
-            text = "\u25E2 NEXT"
-            setTextColor(Color.parseColor("#99FFFFFF"))
+            text = "NEXT_MANEUVER"
+            setTextColor(Color.parseColor("#00E5FF"))
             textSize = 9f
             typeface = mono
             letterSpacing = 0.25f

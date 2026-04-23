@@ -46,28 +46,23 @@ class IdleOverlay @JvmOverloads constructor(
         addView(wordmark)
 
         searchButton = TextView(context).apply {
-            text = "◢ SET DESTINATION"
+            text = "SET DESTINATION"
             setTextColor(Color.WHITE)
-            textSize = 12f
-            letterSpacing = 0.3f
-            typeface = mono
+            textSize = 24f
+            letterSpacing = 0.2f
+            typeface = Typeface.create(mono, Typeface.BOLD)
             gravity = Gravity.CENTER
             isClickable = true
             isFocusable = true
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#CC000000"))
-                setStroke((1 * density).toInt(), Color.parseColor("#6b0919"))
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#E6000000"))
+                setStroke((3 * density).toInt(), Color.parseColor("#FF0033"))
                 cornerRadius = 0f
             }
-            setPadding(
-                (20 * density).toInt(), (12 * density).toInt(),
-                (20 * density).toInt(), (12 * density).toInt()
-            )
             layoutParams = LayoutParams(
-                LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT
+                LayoutParams.MATCH_PARENT, (100 * density).toInt()
             ).apply {
                 gravity = Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL
-                bottomMargin = (32 * density).toInt()
             }
         }
         addView(searchButton)

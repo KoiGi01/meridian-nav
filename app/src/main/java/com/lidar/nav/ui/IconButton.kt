@@ -32,40 +32,36 @@ class IconButton @JvmOverloads constructor(
         isClickable = true
         isFocusable = true
 
-        val bracket = BracketDrawable(
-            legLengthPx = 8 * density,
-            strokeWidthPx = 1.2f * density,
-            strokeColor = Color.WHITE,
-            fillColor = Color.parseColor("#CC000000")
-        )
-        background = RippleDrawable(
-            ColorStateList.valueOf(Color.parseColor("#4D6b0919")),
-            bracket,
-            null
+        background = CyberBracketDrawable(
+            legLengthPx = 10 * density,
+            strokeWidthPx = 1.5f * density,
+            strokeColor = Color.parseColor("#00E5FF"),
+            fillColor = Color.parseColor("#99000A14")
         )
 
         icon = ImageView(context).apply {
             scaleType = ImageView.ScaleType.CENTER_INSIDE
-            imageTintList = ColorStateList.valueOf(Color.WHITE)
+            imageTintList = ColorStateList.valueOf(Color.parseColor("#00E5FF"))
         }
-        val iconSize = (22 * density).toInt()
-        addView(icon, LayoutParams(iconSize, iconSize).apply {
-            topMargin = (8 * density).toInt()
-        })
+        val iconSize = (28 * density).toInt()
+        addView(icon, LayoutParams(iconSize, iconSize))
 
         label = TextView(context).apply {
             setTextColor(Color.parseColor("#CCFFFFFF"))
-            textSize = 8f
+            textSize = 9f
             typeface = mono
             letterSpacing = 0.15f
             gravity = Gravity.CENTER
+            visibility = android.view.View.GONE
         }
         addView(label, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             topMargin = (2 * density).toInt()
-            bottomMargin = (6 * density).toInt()
         })
     }
 
     fun setIconResource(resId: Int) = icon.setImageResource(resId)
-    fun setLabel(text: String) { label.text = text }
+    fun setLabel(text: String) {
+        label.text = text
+        label.visibility = if (text.isNotEmpty()) android.view.View.VISIBLE else android.view.View.GONE
+    }
 }

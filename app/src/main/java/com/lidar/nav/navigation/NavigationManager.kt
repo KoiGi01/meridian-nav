@@ -7,6 +7,8 @@ import com.mapbox.geojson.Point
 import com.mapbox.maps.MapboxMap
 import com.mapbox.maps.extension.style.layers.addLayer
 import com.mapbox.maps.extension.style.layers.generated.lineLayer
+import com.mapbox.maps.extension.style.layers.properties.generated.LineCap
+import com.mapbox.maps.extension.style.layers.properties.generated.LineJoin
 import com.mapbox.maps.extension.style.sources.addSource
 import com.mapbox.maps.extension.style.sources.generated.GeoJsonSource
 import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
@@ -59,10 +61,37 @@ class NavigationManager(
         mapboxMap.getStyle { style ->
             if (style.styleSourceExists(ROUTE_SOURCE_ID)) return@getStyle
             style.addSource(geoJsonSource(ROUTE_SOURCE_ID) { })
+
+            // Outer glow: very wide bloom
+            style.addLayer(lineLayer(RouteDrawAnimator.GLOW_LAYER_ID, ROUTE_SOURCE_ID) {
+                lineColor("#00E5FF")
+                lineWidth(26.0)
+                lineOpacity(0.22)
+                lineBlur(12.0)
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
+                lineTrimOffset(listOf(0.0, 0.0))
+            })
+
+            // Mid casing: solid teal body for depth
+            style.addLayer(lineLayer(RouteDrawAnimator.CASING_LAYER_ID, ROUTE_SOURCE_ID) {
+                lineColor("#00B8CC")
+                lineWidth(10.0)
+                lineOpacity(0.85)
+                lineBlur(2.0)
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
+                lineTrimOffset(listOf(0.0, 0.0))
+            })
+
+            // Hot core: near-white cyan dashes — maximum brightness
             style.addLayer(lineLayer(RouteDrawAnimator.ROUTE_LAYER_ID, ROUTE_SOURCE_ID) {
-                lineColor("#6b0919")
-                lineWidth(4.0)
-                lineOpacity(0.9)
+                lineColor("#E0FEFF")
+                lineWidth(3.5)
+                lineOpacity(1.0)
+                lineCap(LineCap.BUTT)
+                lineJoin(LineJoin.MITER)
+                lineDasharray(listOf(1.6, 1.2))
                 lineTrimOffset(listOf(0.0, 0.0))
             })
         }

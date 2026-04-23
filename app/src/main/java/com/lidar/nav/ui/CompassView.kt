@@ -7,68 +7,94 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
 import android.view.View
-import kotlin.math.cos
-import kotlin.math.sin
 
 class CompassView @JvmOverloads constructor(
     context: Context, attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+    private val density = resources.displayMetrics.density
+
+    private var bearing: Float = 0f
+
+    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.STROKE
-        strokeWidth = 1.5f
-        alpha = 200
+        color = Color.parseColor("#00E5FF")
+        strokeWidth = 2.5f * density
+        setShadowLayer(8f, 0f, 0f, Color.parseColor("#AA00E5FF"))
     }
-
-    private val accentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#6b0919")
+    private val innerFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         style = Paint.Style.FILL
+        color = Color.parseColor("#CC000A14")
+    }
+    private val tickPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#4400E5FF")
+        strokeWidth = 1f * density
+    }
+    private val northPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.parseColor("#FF6040")
+        setShadowLayer(6f, 0f, 0f, Color.parseColor("#88FF6040"))
+    }
+    private val southPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    }
+    private val needlePath = Path()
+
+    init {
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
-    var bearing: Float = 0f
-        set(value) {
-            field = value
-            invalidate()
-        }
+    fun setBearing(mapBearing: Float) {
+        bearing = mapBearing
+        invalidate()
+    }
 
     override fun onDraw(canvas: Canvas) {
         val cx = width / 2f
         val cy = height / 2f
-        val r = (minOf(width, height) / 2f) * 0.85f
+        val radius = (minOf(width, height) / 2f) - (ringPaint.strokeWidth / 2f) - (4 * density)
 
-        canvas.save()
-        canvas.rotate(-bearing, cx, cy)
+        canvas.drawCircle(cx, cy, radius, innerFillPaint)
+        canvas.drawCircle(cx, cy, radius, ringPaint)
 
-        canvas.drawCircle(cx, cy, r, linePaint)
-
+        // 8 cardinal ticks
+        val tickOuter = radius - 4 * density
+        val tickInner = radius - 11 * density
         for (i in 0 until 8) {
-            val angle = Math.toRadians((i * 45).toDouble())
-            val innerR = if (i % 2 == 0) r * 0.75f else r * 0.85f
+            val angle = Math.toRadians((i * 45.0))
+            val cos = Math.cos(angle).toFloat()
+            val sin = Math.sin(angle).toFloat()
             canvas.drawLine(
-                cx + (innerR * sin(angle)).toFloat(),
-                cy - (innerR * cos(angle)).toFloat(),
-                cx + (r * sin(angle)).toFloat(),
-                cy - (r * cos(angle)).toFloat(),
-                linePaint
+                cx + sin * tickInner, cy - cos * tickInner,
+                cx + sin * tickOuter, cy - cos * tickOuter,
+                tickPaint
             )
         }
 
-        val path = Path().apply {
-            moveTo(cx, cy - r * 0.6f)
-            lineTo(cx - r * 0.1f, cy)
-            lineTo(cx + r * 0.1f, cy)
-            close()
-        }
-        canvas.drawPath(path, accentPaint)
+        // Needle rotates opposite to map bearing (keeps pointing geographic north)
+        canvas.save()
+        canvas.rotate(-bearing, cx, cy)
 
-        val southPath = Path().apply {
-            moveTo(cx, cy + r * 0.6f)
-            lineTo(cx - r * 0.1f, cy)
-            lineTo(cx + r * 0.1f, cy)
-            close()
-        }
-        canvas.drawPath(southPath, linePaint)
+        val needleLen = radius * 0.52f
+        val needleW = 5f * density
+
+        // North half — orange-red
+        needlePath.reset()
+        needlePath.moveTo(cx, cy - needleLen)
+        needlePath.lineTo(cx - needleW, cy)
+        needlePath.lineTo(cx + needleW, cy)
+        needlePath.close()
+        canvas.drawPath(needlePath, northPaint)
+
+        // South half — white
+        needlePath.reset()
+        needlePath.moveTo(cx, cy + needleLen * 0.65f)
+        needlePath.lineTo(cx - needleW, cy)
+        needlePath.lineTo(cx + needleW, cy)
+        needlePath.close()
+        canvas.drawPath(needlePath, southPaint)
 
         canvas.restore()
     }

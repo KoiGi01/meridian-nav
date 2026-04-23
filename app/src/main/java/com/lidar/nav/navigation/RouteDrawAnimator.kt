@@ -12,11 +12,17 @@ class RouteDrawAnimator {
 
     companion object {
         const val ROUTE_LAYER_ID = "lidar-route-line"
+        const val CASING_LAYER_ID = "lidar-route-casing"
+        const val GLOW_LAYER_ID = "lidar-route-glow"
     }
+
+    private val layerIds = listOf(GLOW_LAYER_ID, CASING_LAYER_ID, ROUTE_LAYER_ID)
 
     fun animateRouteOn(mapboxMap: MapboxMap, durationMs: Long = 1500L, onComplete: () -> Unit) {
         mapboxMap.getStyle { style ->
-            style.getLayerAs<LineLayer>(ROUTE_LAYER_ID)?.lineTrimOffset(listOf(0.0, 1.0))
+            layerIds.forEach { id ->
+                style.getLayerAs<LineLayer>(id)?.lineTrimOffset(listOf(0.0, 1.0))
+            }
         }
         ValueAnimator.ofFloat(1f, 0f).apply {
             duration = durationMs
@@ -24,8 +30,9 @@ class RouteDrawAnimator {
             addUpdateListener { anim ->
                 val trimEnd = (anim.animatedValue as Float).toDouble()
                 mapboxMap.getStyle { style ->
-                    style.getLayerAs<LineLayer>(ROUTE_LAYER_ID)
-                        ?.lineTrimOffset(listOf(0.0, trimEnd))
+                    layerIds.forEach { id ->
+                        style.getLayerAs<LineLayer>(id)?.lineTrimOffset(listOf(0.0, trimEnd))
+                    }
                 }
             }
             addListener(object : AnimatorListenerAdapter() {

@@ -12,9 +12,9 @@ class GridReactivityView @JvmOverloads constructor(
 ) : View(context, attrs) {
 
     private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
+        color = Color.parseColor("#00E5FF")
         style = Paint.Style.STROKE
-        strokeWidth = 0.5f
+        strokeWidth = 1.5f
     }
 
     private var flashAlpha = 0f
