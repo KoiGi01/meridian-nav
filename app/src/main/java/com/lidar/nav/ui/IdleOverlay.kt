@@ -49,14 +49,24 @@ class IdleOverlay @JvmOverloads constructor(
 
     // Palette
     private val fg        = Color.parseColor("#E8EDF0")
-    private val fgDim     = Color.parseColor("#8CE8EDF0") // 55%
-    private val fgGhost   = Color.parseColor("#52E8EDF0") // 32%
+    private val fgDim     = Color.parseColor("#8CE8EDF0")
+    private val fgGhost   = Color.parseColor("#52E8EDF0")
     private val hairHot   = Color.parseColor("#8CE8EDF0")
     private val hairDim   = Color.parseColor("#1AE8EDF0")
     private val wineLine  = Color.parseColor("#8A1226")
     private val bgPanel   = Color.parseColor("#C7000000")
 
     private val blinkDot: View
+    private val meshStatusTag: TextView
+
+    var onPairMesh: (() -> Unit)? = null
+    var onConvoyToggle: (() -> Unit)? = null
+    var onSettings: (() -> Unit)? = null
+
+    fun setMeshStatus(text: String, active: Boolean) {
+        meshStatusTag.text = text
+        meshStatusTag.setTextColor(if (active) fg else fgGhost)
+    }
 
     init {
         isMotionEventSplittingEnabled = false
@@ -119,7 +129,7 @@ class IdleOverlay @JvmOverloads constructor(
             topMargin = (24 * d).toInt()
         })
 
-        // ── TOP-RIGHT: coordinate readout ───────────────────────────────────
+        // ── TOP-RIGHT: coordinate readout + STANDBY (moved here from bottom-right) ──
         val topRight = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
@@ -151,6 +161,25 @@ class IdleOverlay @JvmOverloads constructor(
             letterSpacing = 0.12f
             gravity = Gravity.END
         })
+        // STANDBY — moved from bottom-right to sit below coordinates
+        topRight.addView(View(context).apply { setBackgroundColor(hairDim) },
+            LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, (1 * d).toInt().coerceAtLeast(1)).apply {
+                topMargin = (16 * d).toInt(); bottomMargin = (10 * d).toInt()
+            })
+        topRight.addView(tag("SYS · STANDBY · NO ROUTE", fgGhost).apply { gravity = Gravity.END })
+        val standbyDotRow = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        }
+        blinkDot = View(context).apply { setBackgroundColor(wineLine) }
+        standbyDotRow.addView(blinkDot, LinearLayout.LayoutParams((6 * d).toInt(), (6 * d).toInt()).apply {
+            rightMargin = (6 * d).toInt()
+        })
+        standbyDotRow.addView(tag("AWAIT INPUT", fgDim))
+        topRight.addView(standbyDotRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = (4 * d).toInt() })
+
         addView(topRight, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.TOP or Gravity.END
             rightMargin = (28 * d).toInt()
@@ -230,35 +259,32 @@ class IdleOverlay @JvmOverloads constructor(
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
-        addView(searchWrap, LayoutParams((520 * d).toInt(), LayoutParams.WRAP_CONTENT).apply {
+        addView(searchWrap, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.BOTTOM or Gravity.START
             leftMargin = (28 * d).toInt()
+            rightMargin = (160 * d).toInt()
             bottomMargin = (28 * d).toInt()
         })
 
-        // ── BOTTOM-RIGHT: STANDBY indicator ─────────────────────────────────
-        val standby = LinearLayout(context).apply {
+        // ── BOTTOM-RIGHT: mesh status tag + button column ───────────────────
+        val meshCol = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.END
         }
-        standby.addView(tag("SYS · STANDBY · NO ROUTE", fgGhost).apply { gravity = Gravity.END })
-        val dotRow = LinearLayout(context).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL or Gravity.END
-        }
-        blinkDot = View(context).apply { setBackgroundColor(wineLine) }
-        dotRow.addView(blinkDot, LinearLayout.LayoutParams((6 * d).toInt(), (6 * d).toInt()).apply {
-            rightMargin = (6 * d).toInt()
-        })
-        dotRow.addView(tag("AWAIT INPUT", fgDim))
-        standby.addView(dotRow, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = (6 * d).toInt() })
 
-        addView(standby, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+        meshStatusTag = tag("MESH · OFFLINE", fgGhost).apply { gravity = Gravity.END }
+        meshCol.addView(meshStatusTag, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = (8 * d).toInt() })
+
+        meshCol.addView(meshButton("PRG", "⌖") { onPairMesh?.invoke() })
+        meshCol.addView(meshButton("CVY", "◈") { onConvoyToggle?.invoke() })
+        meshCol.addView(meshButton("CFG", "⚙") { onSettings?.invoke() })
+
+        addView(meshCol, LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
             gravity = Gravity.BOTTOM or Gravity.END
             rightMargin = (28 * d).toInt()
-            bottomMargin = (38 * d).toInt()
+            bottomMargin = (28 * d).toInt()
         })
 
         // Blink the standby dot
@@ -282,6 +308,39 @@ class IdleOverlay @JvmOverloads constructor(
         typeface = mono
         letterSpacing = 0.18f
         includeFontPadding = false
+    }
+
+    private fun meshButton(label: String, glyph: String, onClick: () -> Unit): LinearLayout {
+        val size = (52 * d).toInt()
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL or Gravity.END
+        }
+        row.addView(tag(label, fgGhost), LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { rightMargin = (10 * d).toInt() })
+
+        val btn = android.widget.FrameLayout(context).apply {
+            background = FramedPanelDrawable(bgPanel, hairHot, hairHot, d)
+            isClickable = true; isFocusable = true
+            setOnClickListener { onClick() }
+        }
+        btn.addView(TextView(context).apply {
+            text = glyph
+            setTextColor(fg)
+            textSize = 18f
+            typeface = mono
+            gravity = Gravity.CENTER
+            includeFontPadding = false
+        }, android.widget.FrameLayout.LayoutParams(
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+            android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+        ).apply { gravity = Gravity.CENTER })
+
+        row.addView(btn, LinearLayout.LayoutParams(size, size).apply {
+            bottomMargin = (10 * d).toInt()
+        })
+        return row
     }
 }
 

@@ -52,6 +52,7 @@ class TripSheet @JvmOverloads constructor(
     private val timeValue: TextView
     private val pctLabel: TextView
     private val progressBar: ProgressRailView
+    private val convoyStrip: ConvoyUnitStripView
 
     var onCancel: (() -> Unit)? = null
 
@@ -60,6 +61,12 @@ class TripSheet @JvmOverloads constructor(
         setPadding((28 * d).toInt(), 0, (28 * d).toInt(), (22 * d).toInt())
 
         val column = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+
+        // Convoy unit strip — hidden until convoy mode is active
+        convoyStrip = ConvoyUnitStripView(context).apply { visibility = View.GONE }
+        column.addView(convoyStrip, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = (12 * d).toInt() })
 
         // Progress rail row
         val railRow = LinearLayout(context).apply {
@@ -178,6 +185,9 @@ class TripSheet @JvmOverloads constructor(
             .withEndAction { visibility = View.GONE }
             .start()
     }
+
+    fun showConvoyStrip() { convoyStrip.visibility = View.VISIBLE }
+    fun hideConvoyStrip() { convoyStrip.visibility = View.GONE }
 
     private fun valueCell(label: String, initial: String): Pair<LinearLayout, TextView> {
         val row = LinearLayout(context).apply {

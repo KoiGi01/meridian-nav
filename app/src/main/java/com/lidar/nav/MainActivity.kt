@@ -33,9 +33,15 @@ import com.lidar.nav.ui.SearchResult
 import com.lidar.nav.ui.SpeedBubble
 import com.lidar.nav.ui.TripSheet
 import com.lidar.nav.ui.TurnCardView
+import com.mapbox.geojson.Feature
+import com.mapbox.geojson.FeatureCollection
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.ImageHolder
+import com.mapbox.maps.extension.style.layers.addLayer
+import com.mapbox.maps.extension.style.layers.generated.circleLayer
+import com.mapbox.maps.extension.style.sources.addSource
+import com.mapbox.maps.extension.style.sources.generated.geoJsonSource
 import com.mapbox.maps.plugin.LocationPuck2D
 import com.mapbox.maps.plugin.PuckBearing
 import com.mapbox.maps.plugin.animation.easeTo
@@ -71,6 +77,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var mapControls: MapControlsView
     private lateinit var searchOverlay: SearchOverlay
     val appState = AppStateController()
+
+    private var convoyActive = false
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -184,6 +192,16 @@ class MainActivity : AppCompatActivity() {
 
             // ── WIRING ────────────────────────────────────────────────────────────
             idleOverlay.searchButton.setOnClickListener { searchOverlay.show() }
+
+            idleOverlay.onPairMesh = {
+                Toast.makeText(this, "Scanning for Meshtastic device…", Toast.LENGTH_SHORT).show()
+            }
+            idleOverlay.onSettings = {
+                Toast.makeText(this, "Settings — coming soon", Toast.LENGTH_SHORT).show()
+            }
+            idleOverlay.onConvoyToggle = { toggleConvoyMode() }
+
+            addConvoyMapLayers()
 
             navigationManager = NavigationManager(
                 context = this,
@@ -327,7 +345,8 @@ class MainActivity : AppCompatActivity() {
     private fun transitionToRouting() {
         appState.startRouting()
         idleOverlay.visibility = View.GONE
-        speedBubble.visibility = View.VISIBLE
+        speedBubble.visibility = if (convoyActive) View.GONE else View.VISIBLE
+        if (convoyActive) tripSheet.showConvoyStrip()
         tripSheet.slideUp()
         cameraManager.animateToRouting()
     }
@@ -339,5 +358,47 @@ class MainActivity : AppCompatActivity() {
         speedBubble.visibility = View.GONE
         idleOverlay.visibility = View.VISIBLE
         cameraManager.animateToIdle()
+    }
+
+    private fun toggleConvoyMode() {
+        convoyActive = !convoyActive
+        if (convoyActive) {
+            idleOverlay.setMeshStatus("MESH · 3 UNITS", true)
+            Toast.makeText(this, "CONVOY MODE ACTIVE", Toast.LENGTH_SHORT).show()
+        } else {
+            idleOverlay.setMeshStatus("MESH · OFFLINE", false)
+            tripSheet.hideConvoyStrip()
+            Toast.makeText(this, "CONVOY MODE OFF", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun addConvoyMapLayers() {
+        val style = binding.mapView.mapboxMap.style ?: return
+
+        // Stub unit positions near the initial camera center (-89.5926, 20.9674)
+        val unitBlue = Feature.fromGeometry(Point.fromLngLat(-89.5905, 20.9688))
+        val unitAmber = Feature.fromGeometry(Point.fromLngLat(-89.5940, 20.9660))
+
+        style.addSource(geoJsonSource("convoy-blue-src") {
+            featureCollection(FeatureCollection.fromFeatures(listOf(unitBlue)))
+        })
+        style.addSource(geoJsonSource("convoy-amber-src") {
+            featureCollection(FeatureCollection.fromFeatures(listOf(unitAmber)))
+        })
+
+        style.addLayer(circleLayer("convoy-blue", "convoy-blue-src") {
+            circleRadius(10.0)
+            circleColor("#4A9EFF")
+            circleOpacity(0.92)
+            circleStrokeWidth(2.0)
+            circleStrokeColor("#1A4A9EFF")
+        })
+        style.addLayer(circleLayer("convoy-amber", "convoy-amber-src") {
+            circleRadius(10.0)
+            circleColor("#FFB300")
+            circleOpacity(0.92)
+            circleStrokeWidth(2.0)
+            circleStrokeColor("#1AFFB300")
+        })
     }
 }
