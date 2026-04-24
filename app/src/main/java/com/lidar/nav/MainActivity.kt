@@ -390,15 +390,11 @@ class MainActivity : AppCompatActivity() {
             circleRadius(10.0)
             circleColor("#4A9EFF")
             circleOpacity(0.92)
-            circleStrokeWidth(2.0)
-            circleStrokeColor("#1A4A9EFF")
         })
         style.addLayer(circleLayer("convoy-amber", "convoy-amber-src") {
             circleRadius(10.0)
             circleColor("#FFB300")
             circleOpacity(0.92)
-            circleStrokeWidth(2.0)
-            circleStrokeColor("#1AFFB300")
         })
     }
 }
