@@ -27,6 +27,11 @@ class TurnArrowView @JvmOverloads constructor(
         invalidate()
     }
 
+    fun setUrgent(urgent: Boolean) {
+        paint.color = if (urgent) Color.parseColor("#FFB800") else Color.WHITE
+        invalidate()
+    }
+
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat()
         val h = height.toFloat()

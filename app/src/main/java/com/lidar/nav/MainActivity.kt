@@ -26,11 +26,13 @@ import com.mapbox.bindgen.Value
 import com.mapbox.maps.Style
 import com.lidar.nav.navigation.NavigationManager
 import com.lidar.nav.state.AppStateController
-import com.lidar.nav.ui.BottomRailView
 import com.lidar.nav.ui.IdleOverlay
 import com.lidar.nav.ui.MapControlsView
 import com.lidar.nav.ui.SearchOverlay
 import com.lidar.nav.ui.SearchResult
+import com.lidar.nav.ui.SpeedBubble
+import com.lidar.nav.ui.TripSheet
+import com.lidar.nav.ui.TurnCardView
 import com.mapbox.geojson.Point
 import com.mapbox.maps.CameraOptions
 import com.mapbox.maps.ImageHolder
@@ -57,19 +59,18 @@ class MainActivity : AppCompatActivity() {
             or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
             or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
         )
-        private const val RAIL_HEIGHT_DP = 88
     }
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var cameraManager: MapCameraManager
     private lateinit var navigationManager: NavigationManager
     private lateinit var idleOverlay: IdleOverlay
-    private lateinit var rail: BottomRailView
+    private lateinit var turnCard: TurnCardView
+    private lateinit var speedBubble: SpeedBubble
+    private lateinit var tripSheet: TripSheet
     private lateinit var mapControls: MapControlsView
     private lateinit var searchOverlay: SearchOverlay
     val appState = AppStateController()
-    private var currentSpeedMph: Int? = null
-    private var currentSpeedLimitMph: Int? = null
 
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -86,8 +87,9 @@ class MainActivity : AppCompatActivity() {
         enforceFullscreen()
 
         binding.mapView.mapboxMap.loadStyle(Style.STANDARD) { style ->
+            // Cyan/teal map palette
             style.setStyleImportConfigProperty("basemap", "lightPreset", Value("night"))
-            style.setStyleImportConfigProperty("basemap", "theme", Value("monochrome"))
+            style.setStyleImportConfigProperty("basemap", "theme", Value("default"))
             style.setStyleImportConfigProperty("basemap", "show3dObjects", Value(true))
             style.setStyleImportConfigProperty("basemap", "showRoadLabels", Value(true))
             style.setStyleImportConfigProperty("basemap", "showPointOfInterestLabels", Value(false))
@@ -101,13 +103,12 @@ class MainActivity : AppCompatActivity() {
                     .build()
             )
 
-            val railHeightPx = (RAIL_HEIGHT_DP * resources.displayMetrics.density).toInt()
+            val d = resources.displayMetrics.density
 
             binding.mapView.logo.updateSettings {
                 position = Gravity.BOTTOM or Gravity.END
-                marginBottom = railHeightPx + 8f
+                marginBottom = 16f
                 marginRight = 16f
-                marginLeft = 0f
             }
             binding.mapView.attribution.updateSettings { enabled = false }
 
@@ -116,39 +117,38 @@ class MainActivity : AppCompatActivity() {
 
             // ── IDLE OVERLAY ──────────────────────────────────────────────────────
             idleOverlay = IdleOverlay(this).also {
-                binding.rootContainer.addView(
-                    it,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.MATCH_PARENT
-                    )
-                )
+                binding.rootContainer.addView(it, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.MATCH_PARENT
+                ))
             }
 
-            // ── BOTTOM RAIL ───────────────────────────────────────────────────────
-            // Accent line (2dp cyan) sits directly above the rail
-            val accentLine = View(this).apply {
-                setBackgroundColor(Color.parseColor("#00E5FF"))
+            // ── TURN CARD — top-left floating ─────────────────────────────────────
+            turnCard = TurnCardView(this).also {
+                binding.rootContainer.addView(it, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.START
+                    leftMargin = (20 * d).toInt()
+                    topMargin = (20 * d).toInt()
+                    width = (320 * d).toInt()
+                })
             }
-            binding.rootContainer.addView(accentLine, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, (2 * resources.displayMetrics.density).toInt()
-            ).apply {
-                gravity = Gravity.BOTTOM
-                bottomMargin = railHeightPx
-            })
 
-            rail = BottomRailView(this).apply {
-                onSearch = { searchOverlay.show() }
-                onCancelRoute = {
-                    navigationManager.stopNavigation()
-                    transitionToIdle()
-                }
+            // ── SPEED BUBBLE — bottom-left ────────────────────────────────────────
+            speedBubble = SpeedBubble(this).also {
+                binding.rootContainer.addView(it, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.WRAP_CONTENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    gravity = Gravity.BOTTOM or Gravity.START
+                    leftMargin = (20 * d).toInt()
+                    bottomMargin = (100 * d).toInt()
+                })
             }
-            binding.rootContainer.addView(rail, FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, railHeightPx
-            ).apply { gravity = Gravity.BOTTOM })
 
-            // ── MAP CONTROLS (top-right) ──────────────────────────────────────────
+            // ── MAP CONTROLS — right edge, center ────────────────────────────────
             mapControls = MapControlsView(this).apply {
                 onRecenter = { cameraManager.recenterAfterTurn() }
                 onZoomIn = { zoomBy(+1.0) }
@@ -158,20 +158,28 @@ class MainActivity : AppCompatActivity() {
                 FrameLayout.LayoutParams.WRAP_CONTENT,
                 FrameLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                topMargin = (24 * resources.displayMetrics.density).toInt()
-                rightMargin = (16 * resources.displayMetrics.density).toInt()
+                gravity = Gravity.CENTER_VERTICAL or Gravity.END
+                rightMargin = (16 * d).toInt()
             })
+
+            // ── TRIP SHEET — bottom, slides up when navigating ────────────────────
+            tripSheet = TripSheet(this).apply {
+                onCancel = {
+                    navigationManager.stopNavigation()
+                    transitionToIdle()
+                }
+            }
+            binding.rootContainer.addView(tripSheet, FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            ).apply { gravity = Gravity.BOTTOM })
 
             // ── SEARCH OVERLAY ────────────────────────────────────────────────────
             searchOverlay = SearchOverlay(this).also {
-                binding.rootContainer.addView(
-                    it,
-                    FrameLayout.LayoutParams(
-                        FrameLayout.LayoutParams.MATCH_PARENT,
-                        FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { gravity = Gravity.BOTTOM }
-                )
+                binding.rootContainer.addView(it, FrameLayout.LayoutParams(
+                    FrameLayout.LayoutParams.MATCH_PARENT,
+                    FrameLayout.LayoutParams.WRAP_CONTENT
+                ).apply { gravity = Gravity.BOTTOM })
             }
 
             // ── WIRING ────────────────────────────────────────────────────────────
@@ -180,20 +188,20 @@ class MainActivity : AppCompatActivity() {
             navigationManager = NavigationManager(
                 context = this,
                 mapboxMap = binding.mapView.mapboxMap,
-                onRouteProgress = { distanceRemaining, durationRemaining, fractionTraveled, distanceToNextManeuver, speedLimitMph ->
-                    currentSpeedLimitMph = speedLimitMph
-                    rail.updateTrip(
+                onRouteProgress = { distanceRemaining, durationRemaining, fractionTraveled, distanceToNextManeuver, _ ->
+                    tripSheet.update(
                         distanceText = formatDistance(distanceRemaining),
                         durationText = formatDuration(durationRemaining),
-                        arrivalText = formatArrivalClock(durationRemaining)
+                        arrivalText = formatArrivalClock(durationRemaining),
+                        fraction = fractionTraveled
                     )
-                    rail.updateManeuverDistance(distanceToNextManeuver)
+                    turnCard.updateDistance(distanceToNextManeuver)
                     if (distanceToNextManeuver <= MapCameraManager.TURN_APPROACH_METERS) {
                         cameraManager.pivotTowardTurn(15.0)
                     }
                 },
                 onBannerInstruction = { primaryText, maneuverType, distanceM ->
-                    rail.updateManeuver(primaryText, maneuverType, distanceM)
+                    turnCard.showManeuver(primaryText, maneuverType, distanceM)
                 },
                 onArrival = {
                     appState.arrive()
@@ -211,7 +219,6 @@ class MainActivity : AppCompatActivity() {
     private fun ensurePermissions() {
         val fine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
         val coarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
-
         if (fine == PackageManager.PERMISSION_GRANTED || coarse == PackageManager.PERMISSION_GRANTED) {
             enableLocationComponent()
         } else {
@@ -229,11 +236,7 @@ class MainActivity : AppCompatActivity() {
             pulsingEnabled = false
             puckBearingEnabled = true
             puckBearing = PuckBearing.COURSE
-            locationPuck = LocationPuck2D(
-                topImage = null,
-                bearingImage = chevron,
-                shadowImage = null
-            )
+            locationPuck = LocationPuck2D(topImage = null, bearingImage = chevron, shadowImage = null)
         }
     }
 
@@ -246,8 +249,7 @@ class MainActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             window.insetsController?.let {
                 it.hide(WindowInsets.Type.systemBars())
-                it.systemBarsBehavior =
-                    WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                it.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             }
         } else {
             @Suppress("DEPRECATION")
@@ -256,23 +258,20 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun createChevronBitmap(): Bitmap {
-        val size = 64
+        val size = 72
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            style = Paint.Style.FILL
-        }
+        val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE; style = Paint.Style.FILL }
         val outline = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(140, 0, 0, 0)
+            color = Color.argb(120, 0, 30, 50)
             style = Paint.Style.STROKE
-            strokeWidth = 1.6f
+            strokeWidth = 2f
         }
         val path = Path().apply {
-            moveTo(size / 2f, size * 0.12f)
-            lineTo(size * 0.82f, size * 0.86f)
-            lineTo(size / 2f, size * 0.68f)
-            lineTo(size * 0.18f, size * 0.86f)
+            moveTo(size / 2f, size * 0.10f)
+            lineTo(size * 0.84f, size * 0.88f)
+            lineTo(size / 2f, size * 0.66f)
+            lineTo(size * 0.16f, size * 0.88f)
             close()
         }
         canvas.drawPath(path, fill)
@@ -288,39 +287,36 @@ class MainActivity : AppCompatActivity() {
         binding.mapView.onDestroy()
     }
 
-    private fun formatDuration(durationSec: Double): String {
-        val minutes = (durationSec / 60.0).toInt()
-        return if (minutes >= 60) "${minutes / 60}h ${minutes % 60}m" else "${minutes}m"
+    private fun formatDuration(sec: Double): String {
+        val m = (sec / 60.0).toInt()
+        return if (m >= 60) "${m / 60}h ${m % 60}m" else "${m}m"
     }
 
-    private fun formatDistance(distanceM: Float): String {
-        val miles = distanceM / 1609.344f
-        return if (miles >= 0.1f) "%.1f mi".format(miles) else "${(distanceM * 3.28084f).toInt()} ft"
+    private fun formatDistance(m: Float): String {
+        val miles = m / 1609.344f
+        return if (miles >= 0.1f) "%.1f mi".format(miles) else "${(m * 3.28084f).toInt()} ft"
     }
 
-    private fun formatArrivalClock(durationSec: Double): String =
-        LocalTime.now().plusSeconds(durationSec.toLong())
-            .format(DateTimeFormatter.ofPattern("HH:mm"))
+    private fun formatArrivalClock(sec: Double): String =
+        LocalTime.now().plusSeconds(sec.toLong()).format(DateTimeFormatter.ofPattern("HH:mm"))
 
     private fun zoomBy(delta: Double) {
-        val currentZoom = binding.mapView.mapboxMap.cameraState.zoom
+        val z = binding.mapView.mapboxMap.cameraState.zoom
         binding.mapView.mapboxMap.easeTo(
-            CameraOptions.Builder().zoom(currentZoom + delta).build(),
+            CameraOptions.Builder().zoom(z + delta).build(),
             MapAnimationOptions.mapAnimationOptions { duration(250L) }
         )
     }
 
     private fun runSearch(query: String) {
-        val proximity = cameraManager.lastKnownLocation()
         lifecycleScope.launch {
-            val hits = SearchService.forward(query, proximity)
+            val hits = SearchService.forward(query, cameraManager.lastKnownLocation())
             searchOverlay.showResults(hits.map { SearchResult(it.name, it.address, it.point) })
         }
     }
 
     private fun startRouteTo(result: SearchResult) {
-        val origin = cameraManager.lastKnownLocation()
-        if (origin == null) {
+        val origin = cameraManager.lastKnownLocation() ?: run {
             Toast.makeText(this, "Waiting for location fix", Toast.LENGTH_SHORT).show()
             return
         }
@@ -331,13 +327,16 @@ class MainActivity : AppCompatActivity() {
     private fun transitionToRouting() {
         appState.startRouting()
         idleOverlay.visibility = View.GONE
-        rail.showNavigating()
+        speedBubble.visibility = View.VISIBLE
+        tripSheet.slideUp()
         cameraManager.animateToRouting()
     }
 
     private fun transitionToIdle() {
         appState.cancelRoute()
-        rail.showIdle()
+        turnCard.reset()
+        tripSheet.slideDown()
+        speedBubble.visibility = View.GONE
         idleOverlay.visibility = View.VISIBLE
         cameraManager.animateToIdle()
     }

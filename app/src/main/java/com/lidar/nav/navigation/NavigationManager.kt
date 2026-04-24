@@ -62,36 +62,34 @@ class NavigationManager(
             if (style.styleSourceExists(ROUTE_SOURCE_ID)) return@getStyle
             style.addSource(geoJsonSource(ROUTE_SOURCE_ID) { })
 
-            // Outer glow: very wide bloom
+            // Wide soft glow — like a highlighter bleed
             style.addLayer(lineLayer(RouteDrawAnimator.GLOW_LAYER_ID, ROUTE_SOURCE_ID) {
-                lineColor("#00E5FF")
-                lineWidth(26.0)
-                lineOpacity(0.22)
-                lineBlur(12.0)
+                lineColor("#00D4FF")
+                lineWidth(22.0)
+                lineOpacity(0.25)
+                lineBlur(10.0)
                 lineCap(LineCap.ROUND)
                 lineJoin(LineJoin.ROUND)
                 lineTrimOffset(listOf(0.0, 0.0))
             })
 
-            // Mid casing: solid teal body for depth
+            // Solid bright body — the highlighted route
             style.addLayer(lineLayer(RouteDrawAnimator.CASING_LAYER_ID, ROUTE_SOURCE_ID) {
-                lineColor("#00B8CC")
-                lineWidth(10.0)
-                lineOpacity(0.85)
-                lineBlur(2.0)
+                lineColor("#0099BB")
+                lineWidth(11.0)
+                lineOpacity(1.0)
                 lineCap(LineCap.ROUND)
                 lineJoin(LineJoin.ROUND)
                 lineTrimOffset(listOf(0.0, 0.0))
             })
 
-            // Hot core: near-white cyan dashes — maximum brightness
+            // Bright core — near-white cyan, solid (not dashed — Google Maps style)
             style.addLayer(lineLayer(RouteDrawAnimator.ROUTE_LAYER_ID, ROUTE_SOURCE_ID) {
-                lineColor("#E0FEFF")
-                lineWidth(3.5)
+                lineColor("#AAEEFF")
+                lineWidth(5.0)
                 lineOpacity(1.0)
-                lineCap(LineCap.BUTT)
-                lineJoin(LineJoin.MITER)
-                lineDasharray(listOf(1.6, 1.2))
+                lineCap(LineCap.ROUND)
+                lineJoin(LineJoin.ROUND)
                 lineTrimOffset(listOf(0.0, 0.0))
             })
         }

@@ -3,6 +3,7 @@ package com.lidar.nav.ui
 import android.content.Context
 import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -20,24 +21,28 @@ class MapControlsView @JvmOverloads constructor(
 
     init {
         orientation = VERTICAL
-
         addView(btn(R.drawable.ic_recenter) { onRecenter?.invoke() })
         addView(btn(R.drawable.ic_zoom_in) { onZoomIn?.invoke() })
         addView(btn(R.drawable.ic_zoom_out) { onZoomOut?.invoke() })
     }
 
     private fun btn(iconRes: Int, onClick: () -> Unit): ImageView {
-        val size = (40 * d).toInt()
+        val size = (44 * d).toInt()
         return ImageView(context).apply {
             setImageResource(iconRes)
-            imageTintList = ColorStateList.valueOf(Color.parseColor("#CCFFFFFF"))
+            imageTintList = ColorStateList.valueOf(Color.parseColor("#CCE8EDF0"))
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             isClickable = true
             isFocusable = true
-            setBackgroundColor(Color.parseColor("#66000000"))
+            elevation = 4 * d
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.OVAL
+                setColor(Color.parseColor("#CC101418"))
+                setStroke((1 * d).toInt(), Color.parseColor("#22FFFFFF"))
+            }
             setOnClickListener { onClick() }
             layoutParams = LayoutParams(size, size).apply {
-                bottomMargin = (8 * d).toInt()
+                bottomMargin = (10 * d).toInt()
             }
         }
     }
